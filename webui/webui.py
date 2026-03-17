@@ -352,6 +352,8 @@ def build_translator_command(
     # --- Transcription ---
     if whisper_backend == "Faster-Whisper":
         cmd.append("--use_faster_whisper")
+    elif whisper_backend == "Qwen3-ASR":
+        cmd.append("--use_qwen3_asr")
     elif whisper_backend == "Simul-Streaming":
         cmd.append("--use_simul_streaming")
     elif whisper_backend == "Faster-Whisper & Simul-Streaming":
@@ -723,7 +725,8 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
 
         with gr.Tab(i18n.get("transcription")):
             whisper_backend = gr.Radio(choices=[
-                ("Whisper", "Whisper"), ("Faster-Whisper", "Faster-Whisper"), ("Simul-Streaming", "Simul-Streaming"),
+                ("Whisper", "Whisper"), ("Faster-Whisper", "Faster-Whisper"), ("Qwen3-ASR", "Qwen3-ASR"),
+                ("Simul-Streaming", "Simul-Streaming"),
                 ("Faster-Whisper & Simul-Streaming", "Faster-Whisper & Simul-Streaming"),
                 (i18n.get("openai_transcription_api_option"), "OpenAI Transcription API")
             ],
@@ -739,7 +742,7 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
             with gr.Row():
                 model_size = gr.Dropdown([
                     "tiny", "tiny.en", "base", "base.en", "small", "small.en", "medium", "medium.en", "large",
-                    "large-v1", "large-v2", "large-v3", "large-v3-turbo"
+                    "large-v1", "large-v2", "large-v3", "large-v3-turbo", "Qwen/Qwen3-ASR-0.6B", "Qwen/Qwen3-ASR-1.7B"
                 ],
                                          label=i18n.get("model_size"),
                                          value=get_default("model_size"),
@@ -912,15 +915,24 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
     input_type.change(update_input_visibility, input_type, [url_group, device_group, file_group])
 
     # Whisper Backend Visibility
-    def update_backend_visibility(choice):
+    def update_backend_visibility(choice, current_model):
         openai_visible = (choice == "OpenAI Transcription API")
+        next_model = current_model
+        if choice == "Qwen3-ASR":
+            if not current_model or current_model in [
+                    "tiny", "tiny.en", "base", "base.en", "small", "small.en", "medium", "medium.en", "large",
+                    "large-v1", "large-v2", "large-v3", "large-v3-turbo"
+            ]:
+                next_model = "Qwen/Qwen3-ASR-0.6B"
+        elif current_model in ["Qwen/Qwen3-ASR-0.6B", "Qwen/Qwen3-ASR-1.7B"]:
+            next_model = "small"
         return {
             openai_transcription_model: gr.update(visible=openai_visible),
-            model_size: gr.update(visible=not openai_visible),
+            model_size: gr.update(visible=not openai_visible, value=next_model),
             openai_transcription_group: gr.update(visible=openai_visible)
         }
 
-    whisper_backend.change(update_backend_visibility, whisper_backend,
+    whisper_backend.change(update_backend_visibility, [whisper_backend, model_size],
                            [openai_transcription_model, model_size, openai_transcription_group])
 
     # Translation Visibility

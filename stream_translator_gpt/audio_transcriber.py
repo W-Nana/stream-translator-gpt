@@ -2,6 +2,8 @@ import os
 import io
 import queue
 import re
+import atexit
+import threading
 from abc import abstractmethod
 from scipy.io.wavfile import write as write_audio
 
@@ -20,6 +22,40 @@ def _filter_text(text: str, transcription_filters: str):
             raise Exception('Unknown filter: %s' % filter_name)
         text = filter(text)
     return text
+
+
+_stderr_filter_installed = False
+
+
+def _install_stderr_filter():
+    global _stderr_filter_installed
+    if _stderr_filter_installed:
+        return
+
+    source_fd = os.dup(2)
+    read_fd, write_fd = os.pipe()
+    os.dup2(write_fd, 2)
+    os.close(write_fd)
+
+    ignored_markers = (
+        'NNPACK.cpp:57',
+        'Could not initialize NNPACK! Reason: Unsupported hardware.',
+    )
+
+    def _pump_stderr():
+        with os.fdopen(read_fd, 'rb', closefd=True) as reader:
+            while True:
+                chunk = reader.readline()
+                if not chunk:
+                    break
+                text = chunk.decode(errors='replace')
+                if all(marker in text for marker in ignored_markers):
+                    continue
+                os.write(source_fd, chunk)
+
+    threading.Thread(target=_pump_stderr, daemon=True).start()
+    atexit.register(lambda: os.close(source_fd))
+    _stderr_filter_installed = True
 
 
 class AudioTranscriber(LoopWorkerBase):
@@ -137,6 +173,107 @@ class FasterWhisper(AudioTranscriber):
             text += segment.text
             tokens.extend(getattr(segment, 'tokens', None) or [])
         return text, tokens if tokens else None
+
+
+class Qwen3ASR(AudioTranscriber):
+
+    LANGUAGE_ALIASES = {
+        'zh': 'Chinese',
+        'en': 'English',
+        'yue': 'Cantonese',
+        'ja': 'Japanese',
+        'ko': 'Korean',
+        'de': 'German',
+        'fr': 'French',
+        'es': 'Spanish',
+        'ru': 'Russian',
+        'it': 'Italian',
+        'pt': 'Portuguese',
+        'vi': 'Vietnamese',
+        'id': 'Indonesian',
+        'th': 'Thai',
+        'ms': 'Malay',
+        'ar': 'Arabic',
+    }
+
+    def __init__(self, model: str, language: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        try:
+            import torch
+            from packaging.version import Version
+        except ImportError as exc:
+            raise ImportError(
+                'Qwen3-ASR backend requires the official runtime package in the active venv. '
+                'Install it with "pip install -U qwen-asr" and retry. '
+                'If installation fails in Python 3.10, the official repo recommends using a fresh Python 3.12 environment.'
+            ) from exc
+        if Version(torch.__version__.split('+')[0]) < Version('2.2.0'):
+            raise RuntimeError(
+                f'Qwen3-ASR requires torch>=2.2, but the active venv has torch {torch.__version__}. '
+                'Please upgrade torch in this venv, then retry.'
+            )
+        _install_stderr_filter()
+        if hasattr(torch.backends, 'nnpack') and torch.backends.nnpack.is_available():
+            torch.backends.nnpack.set_flags(False)
+        try:
+            import sys
+            import types
+            if 'nagisa' not in sys.modules:
+                nagisa_stub = types.ModuleType('nagisa')
+
+                def _unsupported_nagisa(*args, **kwargs):
+                    raise RuntimeError(
+                        'Qwen3-ASR forced alignment is unavailable in this environment because the nagisa package '
+                        'cannot run on this CPU. Basic ASR still works.'
+                    )
+
+                nagisa_stub.tagging = _unsupported_nagisa
+                sys.modules['nagisa'] = nagisa_stub
+            from qwen_asr import Qwen3ASRModel
+            from transformers import logging as transformers_logging
+        except ImportError as exc:
+            raise ImportError(
+                'Qwen3-ASR runtime package is installed incompletely. '
+                'Please reinstall it with "pip install -U qwen-asr".'
+            ) from exc
+
+        transformers_logging.set_verbosity_error()
+        print(f'{INFO}Loading Qwen3-ASR model: {model}')
+        dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+        self.model = Qwen3ASRModel.from_pretrained(
+            model,
+            dtype=dtype,
+            device_map='auto',
+        )
+        generation_config = getattr(getattr(self.model, 'model', None), 'generation_config', None)
+        if generation_config is not None:
+            if getattr(generation_config, 'eos_token_id', None) is not None:
+                generation_config.pad_token_id = generation_config.eos_token_id
+            if hasattr(generation_config, 'temperature'):
+                generation_config.temperature = None
+        self.language = self.LANGUAGE_ALIASES.get(language, language)
+
+    @staticmethod
+    def _extract_text(result):
+        if result is None:
+            return ''
+        if isinstance(result, str):
+            return result
+        if isinstance(result, dict):
+            return result.get('text', '') or result.get('transcript', '') or result.get('content', '')
+        if isinstance(result, (list, tuple)):
+            return ''.join(Qwen3ASR._extract_text(item) for item in result)
+        text = getattr(result, 'text', None)
+        if text is not None:
+            return text
+        return str(result)
+
+    def transcribe(self, audio: np.array, initial_prompt: str = None) -> tuple[str, list | None]:
+        results = self.model.transcribe(
+            audio=(audio, SAMPLE_RATE),
+            language=self.language,
+        )
+        return self._extract_text(results), None
 
 
 class SimulStreaming(AudioTranscriber):

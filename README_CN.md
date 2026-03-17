@@ -64,7 +64,7 @@ flowchart LR
 
 基于 [**Silero-VAD**](https://github.com/snakers4/silero-vad) 的动态阈值音频切片。
 
-在本地使用 [**Whisper**](https://github.com/openai/whisper) / [**Faster-Whisper**](https://github.com/SYSTRAN/faster-whisper) /  [**Simul Streaming**](https://github.com/ufal/SimulStreaming) 或远程调用 [**OpenAI Transcription API**](https://platform.openai.com/docs/guides/speech-to-text) 进行转录。
+在本地使用 [**Whisper**](https://github.com/openai/whisper) / [**Faster-Whisper**](https://github.com/SYSTRAN/faster-whisper) / [**Qwen3-ASR**](https://github.com/QwenLM/Qwen3-ASR) / [**Simul Streaming**](https://github.com/ufal/SimulStreaming) 或远程调用 [**OpenAI Transcription API**](https://platform.openai.com/docs/guides/speech-to-text) 进行转录。
 
 使用 OpenAI 的 [**GPT API**](https://platform.openai.com/docs/overview) / Google 的 [**Gemini API**](https://ai.google.dev/gemini-api/docs) 进行翻译。
 
@@ -94,6 +94,8 @@ stream-translator-gpt-webui
 **从 PyPI 安装稳定版本:**
 
 ```
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install stream-translator-gpt -U
 stream-translator-gpt
 ```
@@ -104,8 +106,17 @@ stream-translator-gpt
 
 ```
 git clone https://github.com/ionic-bond/stream-translator-gpt.git
-pip install -r ./stream-translator-gpt/requirements.txt -U
-python3 ./stream-translator-gpt/stream_translator_gpt/main.py
+cd ./stream-translator-gpt
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt -U
+python3 ./stream_translator_gpt/main.py
+```
+
+**在已有 `.venv` 中进行可编辑安装：**
+
+```
+pip install --no-build-isolation -e ".[webui]"
 ```
 
 ### 使用方法
@@ -119,6 +130,12 @@ Colab上的命令 [![Open In Colab](https://colab.research.google.com/assets/col
 - 使用 **Faster-Whisper** 进行转录:
 
     ```stream-translator-gpt {网址} --model large --language {输入语言} --use_faster_whisper```
+
+- 使用 **Qwen3-ASR** 进行转录:
+
+    ```stream-translator-gpt {网址} --model Qwen/Qwen3-ASR-0.6B --language {输入语言} --use_qwen3_asr```
+
+    请在 `.venv` 中单独执行 `pip install -U qwen-asr` 安装 Qwen3-ASR；如果失败，官方建议改用全新的 Python 3.12 环境： https://github.com/QwenLM/Qwen3-ASR
 
 - 使用 **SimulStreaming** 进行转录:
 
@@ -204,6 +221,7 @@ Colab上的命令 [![Open In Colab](https://colab.research.google.com/assets/col
 | `--model`                               | small                          | 选择 Whisper/Faster-Whisper/Simul Streaming 模型大小。可用模型请参见 [此处](https://github.com/openai/whisper#available-models-and-languages)。                           |
 | `--language`                            | auto                           | 直播流中的语言。可用语言请参见 [此处](https://github.com/openai/whisper#available-models-and-languages)。                                                                 |
 | `--use_faster_whisper`                  |                                | 设置此标志以使用 Faster-Whisper 进行语音转文字，而不是原始的 OpenAI Whisper。如果与 --use_simul_streaming 一起使用，将使用以 Faster-Whisper 作为编码器的 SimulStreaming。 |
+| `--use_qwen3_asr`                       |                                | 设置此标志以使用 Qwen3-ASR 进行语音转文字。`--model` 可填写 Hugging Face 模型 ID，例如 `Qwen/Qwen3-ASR-0.6B` 或 `Qwen/Qwen3-ASR-1.7B`。请按官方仓库说明单独安装 Qwen3-ASR。 |
 | `--use_simul_streaming`                 |                                | 设置此标志以使用 SimulStreaming 进行语音转文字，而不是原始的 OpenAI Whisper。如果与 --use_faster_whisper 一起使用，将使用以 Faster-Whisper 作为编码器的 SimulStreaming。  |
 | `--use_openai_transcription_api`        |                                | 设置此标志以使用 OpenAI transcription API，而不是原始的本地 Whisper。                                                                                                     |
 | `--transcription_filters`               | emoji_filter,repetition_filter | 应用于语音转文字结果的过滤器，用 "," 分隔。我们提供 emoji_filter、repetition_filter 和 japanese_stream_filter。                                                           |

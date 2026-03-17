@@ -64,7 +64,7 @@ Uses [**yt-dlp**](https://github.com/yt-dlp/yt-dlp) to extract audio data from l
 
 Dynamic threshold audio slicing based on [**Silero-VAD**](https://github.com/snakers4/silero-vad).
 
-Use [**Whisper**](https://github.com/openai/whisper) / [**Faster-Whisper**](https://github.com/SYSTRAN/faster-whisper) /  [**Simul Streaming**](https://github.com/ufal/SimulStreaming) locally or call [**OpenAI Transcription API**](https://platform.openai.com/docs/guides/speech-to-text) remotely for transcription.
+Use [**Whisper**](https://github.com/openai/whisper) / [**Faster-Whisper**](https://github.com/SYSTRAN/faster-whisper) / [**Qwen3-ASR**](https://github.com/QwenLM/Qwen3-ASR) / [**Simul Streaming**](https://github.com/ufal/SimulStreaming) locally or call [**OpenAI Transcription API**](https://platform.openai.com/docs/guides/speech-to-text) remotely for transcription.
 
 Use OpenAI's [**GPT API**](https://platform.openai.com/docs/overview) / Google's [**Gemini API**](https://ai.google.dev/gemini-api/docs) for translation.
 
@@ -94,6 +94,8 @@ stream-translator-gpt-webui
 **Install release version from PyPI:**
 
 ```
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install stream-translator-gpt -U
 stream-translator-gpt
 ```
@@ -104,8 +106,17 @@ or
 
 ```
 git clone https://github.com/ionic-bond/stream-translator-gpt.git
-pip install -r ./stream-translator-gpt/requirements.txt -U
-python3 ./stream-translator-gpt/stream_translator_gpt/main.py
+cd ./stream-translator-gpt
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt -U
+python3 ./stream_translator_gpt/main.py
+```
+
+**Editable install inside an existing `.venv`:**
+
+```
+pip install --no-build-isolation -e ".[webui]"
 ```
 
 ### Usage
@@ -119,6 +130,12 @@ The commands on Colab [![Open In Colab](https://colab.research.google.com/assets
 - Transcribe by **Faster-Whisper**:
 
     ```stream-translator-gpt {URL} --model large --language {input_language} --use_faster_whisper```
+
+- Transcribe by **Qwen3-ASR**:
+
+    ```stream-translator-gpt {URL} --model Qwen/Qwen3-ASR-0.6B --language {input_language} --use_qwen3_asr```
+
+    Install Qwen3-ASR separately in your `.venv` with `pip install -U qwen-asr`. If that fails, the official repo recommends a fresh Python 3.12 environment: https://github.com/QwenLM/Qwen3-ASR
 
 - Transcribe by **SimulStreaming**:
 
@@ -204,6 +221,7 @@ The commands on Colab [![Open In Colab](https://colab.research.google.com/assets
 | `--model`                               | small                          | Select Whisper/Faster-Whisper/Simul Streaming model size. See [here](https://github.com/openai/whisper#available-models-and-languages) for available models.                                                       |
 | `--language`                            | auto                           | Language spoken in the stream. See [here](https://github.com/openai/whisper#available-models-and-languages) for available languages.                                                                               |
 | `--use_faster_whisper`                  |                                | Set this flag to use Faster-Whisper instead of Whisper. If used with --use_simul_streaming, SimulStreaming with Faster-Whisper as the encoder will be used.                                                        |
+| `--use_qwen3_asr`                       |                                | Set this flag to use Qwen3-ASR instead of Whisper. `--model` accepts a Hugging Face model ID such as `Qwen/Qwen3-ASR-0.6B` or `Qwen/Qwen3-ASR-1.7B`. Install Qwen3-ASR separately by following the official repo. |
 | `--use_simul_streaming`                 |                                | Set this flag to use SimulStreaming instead of Whisper. If used with --use_faster_whisper, SimulStreaming with Faster-Whisper as the encoder will be used.                                                         |
 | `--use_openai_transcription_api`        |                                | Set this flag to use OpenAI transcription API instead of the original local Whipser.                                                                                                                               |
 | `--transcription_filters`               | emoji_filter,repetition_filter | Filters apply to transcription results, separated by ",". We provide emoji_filter, repetition_filter and japanese_stream_filter.                                                                                   |

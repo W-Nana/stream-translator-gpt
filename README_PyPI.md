@@ -10,6 +10,8 @@ Try it on Colab:
 
 (Due to frequent scraping and theft of API keys, we are unable to provide a trial API key. You need to fill in your own API key.)
 
+Use [**Whisper**](https://github.com/openai/whisper) / [**Faster-Whisper**](https://github.com/SYSTRAN/faster-whisper) / [**Qwen3-ASR**](https://github.com/QwenLM/Qwen3-ASR) / [**Simul Streaming**](https://github.com/ufal/SimulStreaming) locally or call [**OpenAI Transcription API**](https://platform.openai.com/docs/guides/speech-to-text) remotely for transcription.
+
 ## Prerequisites
 
 1. **Python** >= 3.8 (Recommend >= 3.10)
@@ -34,6 +36,8 @@ stream-translator-gpt-webui
 **Install release version from PyPI:**
 
 ```
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install stream-translator-gpt -U
 stream-translator-gpt
 ```
@@ -44,8 +48,11 @@ or
 
 ```
 git clone https://github.com/ionic-bond/stream-translator-gpt.git
-pip install -r ./stream-translator-gpt/requirements.txt -U
-python3 ./stream-translator-gpt/stream_translator_gpt/main.py
+cd ./stream-translator-gpt
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt -U
+python3 ./stream_translator_gpt/main.py
 ```
 
 ### Usage
@@ -59,6 +66,12 @@ The commands on Colab [![Open In Colab](https://colab.research.google.com/assets
 - Transcribe by **Faster-Whisper**:
 
     ```stream-translator-gpt {URL} --model large --language {input_language} --use_faster_whisper```
+
+- Transcribe by **Qwen3-ASR**:
+
+    ```stream-translator-gpt {URL} --model Qwen/Qwen3-ASR-0.6B --language {input_language} --use_qwen3_asr```
+
+    Install Qwen3-ASR separately in your `.venv` with `pip install -U qwen-asr`. If that fails, the official repo recommends a fresh Python 3.12 environment: https://github.com/QwenLM/Qwen3-ASR
 
 - Transcribe by **SimulStreaming**:
 

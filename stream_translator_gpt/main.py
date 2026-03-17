@@ -16,7 +16,7 @@ if __name__ == '__main__':
 from .common import ApiKeyPool, start_daemon_thread, is_url, WARNING, ERROR, INFO
 from .audio_getter import StreamAudioGetter, LocalFileAudioGetter, DeviceAudioGetter
 from .audio_slicer import AudioSlicer
-from .audio_transcriber import OpenaiWhisper, FasterWhisper, SimulStreaming, RemoteOpenaiTranscriber
+from .audio_transcriber import _install_stderr_filter, OpenaiWhisper, FasterWhisper, Qwen3ASR, SimulStreaming, RemoteOpenaiTranscriber
 from .llm_translator import LLMClient, ParallelTranslator, SerialTranslator
 from .result_exporter import ResultExporter
 from . import __version__
@@ -25,7 +25,7 @@ from . import __version__
 def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, proxy, format, cookies, input_proxy,
          device_index, device_recording_interval, mic, min_audio_length, max_audio_length, target_audio_length,
          continuous_no_speech_threshold, disable_dynamic_no_speech_threshold, prefix_retention_length, vad_threshold,
-         disable_dynamic_vad_threshold, model, language, use_faster_whisper, use_simul_streaming,
+         disable_dynamic_vad_threshold, model, language, use_faster_whisper, use_qwen3_asr, use_simul_streaming,
          use_openai_transcription_api, openai_transcription_model, transcription_filters, disable_transcription_context,
          transcription_initial_prompt, gpt_model, gemini_model, translation_prompt, translation_history_size,
          translation_timeout, use_json_result, retry_if_translation_fails, temperature, top_p, top_k, prompt_cache_key,
@@ -35,6 +35,7 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
     if openai_base_url:
         os.environ['OPENAI_BASE_URL'] = openai_base_url
 
+    _install_stderr_filter()
     ApiKeyPool.init(openai_api_key=openai_api_key, google_api_key=google_api_key)
 
     # Init queues
@@ -89,6 +90,8 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
                                       language=language,
                                       use_faster_whisper=use_faster_whisper,
                                       **common_args)
+            elif use_qwen3_asr:
+                return Qwen3ASR(model=model, language=language, **common_args)
             elif use_faster_whisper:
                 return FasterWhisper(model=model, language=language, **common_args)
             elif use_openai_transcription_api:
@@ -303,7 +306,7 @@ def cli():
         type=str,
         default='small',
         help=
-        'Select Whisper/Faster-Whisper/Simul Streaming model size. See https://github.com/openai/whisper#available-models-and-languages for available models.'
+        'Select Whisper/Faster-Whisper/Simul Streaming model size, or pass a Qwen3-ASR Hugging Face model ID such as Qwen/Qwen3-ASR-0.6B.'
     )
     parser.add_argument(
         '--language',
@@ -319,6 +322,10 @@ def cli():
         help=
         'Set this flag to use Faster-Whisper instead of Whisper. If used with --use_simul_streaming, SimulStreaming with Faster-Whisper as the encoder will be used.'
     )
+    parser.add_argument('--use_qwen3_asr',
+                        action='store_true',
+                        help='Set this flag to use Qwen3-ASR instead of Whisper. --model accepts a Hugging Face model ID '
+                        'such as Qwen/Qwen3-ASR-0.6B or Qwen/Qwen3-ASR-1.7B.')
     parser.add_argument(
         '--use_simul_streaming',
         action='store_true',
@@ -535,16 +542,19 @@ def cli():
     transcription_decoder_flag_num = 0
     if args['use_faster_whisper']:
         transcription_encoder_flag_num += 1
+    if args['use_qwen3_asr']:
+        transcription_encoder_flag_num += 1
+        transcription_decoder_flag_num += 1
     if args['use_simul_streaming']:
         transcription_decoder_flag_num += 1
     if args['use_openai_transcription_api']:
         transcription_encoder_flag_num += 1
         transcription_decoder_flag_num += 1
     if transcription_encoder_flag_num > 1:
-        print(f'{ERROR}Cannot use Faster Whisper or OpenAI Transcription API at the same time')
+        print(f'{ERROR}Cannot use Faster Whisper, Qwen3-ASR, or OpenAI Transcription API at the same time')
         sys.exit(0)
     if transcription_decoder_flag_num > 1:
-        print(f'{ERROR}Cannot use Simul Streaming or OpenAI Transcription API at the same time')
+        print(f'{ERROR}Cannot use Simul Streaming, Qwen3-ASR, or OpenAI Transcription API at the same time')
         sys.exit(0)
 
     if args['use_openai_transcription_api'] and not args['openai_api_key']:
@@ -574,6 +584,34 @@ def cli():
 
     if args['language'] == 'auto':
         args['language'] = None
+
+    if not args['use_qwen3_asr'] and isinstance(args['model'], str) and args['model'].startswith('Qwen/'):
+        print(
+            f'{ERROR}Current --model is a Qwen3-ASR model ID ({args["model"]}), but Qwen3-ASR backend is not enabled. '
+            'Please switch back to a Whisper model such as "small" or enable --use_qwen3_asr.'
+        )
+        sys.exit(0)
+
+    if args['use_qwen3_asr']:
+        qwen_model_aliases = {
+            'tiny': 'Qwen/Qwen3-ASR-0.6B',
+            'tiny.en': 'Qwen/Qwen3-ASR-0.6B',
+            'base': 'Qwen/Qwen3-ASR-0.6B',
+            'base.en': 'Qwen/Qwen3-ASR-0.6B',
+            'small': 'Qwen/Qwen3-ASR-0.6B',
+            'small.en': 'Qwen/Qwen3-ASR-0.6B',
+            'medium': 'Qwen/Qwen3-ASR-1.7B',
+            'medium.en': 'Qwen/Qwen3-ASR-1.7B',
+            'large': 'Qwen/Qwen3-ASR-1.7B',
+            'large-v1': 'Qwen/Qwen3-ASR-1.7B',
+            'large-v2': 'Qwen/Qwen3-ASR-1.7B',
+            'large-v3': 'Qwen/Qwen3-ASR-1.7B',
+            'large-v3-turbo': 'Qwen/Qwen3-ASR-1.7B',
+        }
+        if args['model'] in qwen_model_aliases:
+            mapped_model = qwen_model_aliases[args['model']]
+            print(f'{INFO}Mapping Whisper model alias "{args["model"]}" to Qwen3-ASR model "{mapped_model}"')
+            args['model'] = mapped_model
 
     if args['whisper_filters'] is not None:
         print(
