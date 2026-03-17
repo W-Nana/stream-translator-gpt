@@ -82,7 +82,10 @@ class AudioTranscriber(LoopWorkerBase):
         """Override in subclass to reset model context when repetition is detected."""
         pass
 
-    def loop(self, input_queue: queue.SimpleQueue[TranslationTask], output_queue: queue.SimpleQueue[TranslationTask]):
+    def loop(self,
+             input_queue: queue.SimpleQueue[TranslationTask],
+             output_queue: queue.SimpleQueue[TranslationTask],
+             preview_output_queue: queue.SimpleQueue[TranslationTask] = None):
         previous_text = ""
 
         while True:
@@ -130,6 +133,11 @@ class AudioTranscriber(LoopWorkerBase):
                     print(timestamp_text + ' ' + task.transcript)
                 else:
                     print(task.transcript)
+            if preview_output_queue is not None:
+                preview_output_queue.put(task.make_output_task(output_stage='transcript'))
+                task.output_stage = 'translation'
+            else:
+                task.output_stage = 'complete'
             output_queue.put(task)
 
 

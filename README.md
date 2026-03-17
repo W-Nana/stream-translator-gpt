@@ -185,6 +185,18 @@ The commands on Colab [![Open In Colab](https://colab.research.google.com/assets
 
     ```stream-translator-gpt {URL} --model large --language {input_language} --cqhttp_url {your_cqhttp_url} --cqhttp_token {your_cqhttp_token}```
 
+- Push structured result events through SSE:
+
+    ```stream-translator-gpt {URL} --model large --language ja --translation_prompt "Translate from Japanese to Chinese" --openai_api_key {your_openai_key} --sse_port 18000```
+
+    Then subscribe to `http://127.0.0.1:18000/events`.
+
+    Example clients:
+    [examples/sse_client.html](/mnt/HDD/AI/stream-translator-gpt/examples/sse_client.html)
+    [examples/sse_client.py](/mnt/HDD/AI/stream-translator-gpt/examples/sse_client.py)
+    API document:
+    [docs/SSE_API.md](/mnt/HDD/AI/stream-translator-gpt/docs/SSE_API.md)
+
 - Saving result to a .srt subtitle file:
 
     ```stream-translator-gpt {URL} --model large --language ja --translation_prompt "Translate from Japanese to Chinese" --google_api_key {your_google_key} --hide_transcribe_result --retry_if_translation_fails --output_timestamps --output_file_path ./result.srt```
@@ -254,6 +266,9 @@ The commands on Colab [![Open In Colab](https://colab.research.google.com/assets
 | `--telegram_token`                      |                                | Token of Telegram bot.                                                                                                                                                                                             |
 | `--telegram_chat_id`                    |                                | If set, will send the result text to this Telegram chat. Needs to be used with \"--telegram_token\".                                                                                                               |
 | `--output_proxy`                        |                                | Use the specified HTTP/HTTPS/SOCKS proxy for Cqhttp/Discord/Telegram, e.g. http://127.0.0.1:7890.                                                                                                                  |
+| `--sse_host`                            | `127.0.0.1`                    | Bind host for the built-in SSE server.                                                                                                                                                                             |
+| `--sse_port`                            |                                | If set, starts the built-in SSE server on this port and pushes structured JSON events.                                                                                                                             |
+| `--sse_path`                            | `/events`                      | HTTP path for the built-in SSE endpoint.                                                                                                                                                                           |
 
 ## Contact me
 

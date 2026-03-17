@@ -185,6 +185,18 @@ Colab上的命令 [![Open In Colab](https://colab.research.google.com/assets/col
 
     ```stream-translator-gpt {网址} --model large --language {输入语言} --cqhttp_url {您的 cqhttp 地址} --cqhttp_token {您的 cqhttp 令牌}```
 
+- 通过 SSE 推送结构化结果事件：
+
+    ```stream-translator-gpt {网址} --model large --language ja --translation_prompt "Translate from Japanese to Chinese" --openai_api_key {您的 OpenAI API Key} --sse_port 18000```
+
+    然后订阅 `http://127.0.0.1:18000/events`。
+
+    客户端示例：
+    [examples/sse_client.html](/mnt/HDD/AI/stream-translator-gpt/examples/sse_client.html)
+    [examples/sse_client.py](/mnt/HDD/AI/stream-translator-gpt/examples/sse_client.py)
+    API 文档：
+    [docs/SSE_API.md](/mnt/HDD/AI/stream-translator-gpt/docs/SSE_API.md)
+
 - 保存结果到 .srt 字幕文件:
 
     ```stream-translator-gpt {网址} --model large --language ja --translation_prompt "翻译以下日语为中文，只输出译文，不要输出原文，在一行内输出" --google_api_key {您的 Google 密钥} --hide_transcribe_result --retry_if_translation_fails --output_timestamps --output_file_path ./result.srt```
@@ -254,6 +266,9 @@ Colab上的命令 [![Open In Colab](https://colab.research.google.com/assets/col
 | `--telegram_token`                      |                                | Telegram 机器人的 Token。                                                                                                                                                 |
 | `--telegram_chat_id`                    |                                | 如果使用，将把结果文本发送到此 Telegram 聊天。需要与 \"--telegram_token\" 配合使用。                                                                                      |
 | `--output_proxy`                        |                                | 为 Cqhttp/Discord/Telegram 使用指定的 HTTP/HTTPS/SOCKS 代理，例如 http://127.0.0.1:7890。                                                                                 |
+| `--sse_host`                            | `127.0.0.1`                    | 内置 SSE 服务的绑定主机。                                                                                                                                               |
+| `--sse_port`                            |                                | 设置后会在该端口启动内置 SSE 服务，并推送结构化 JSON 事件。                                                                                                            |
+| `--sse_path`                            | `/events`                      | 内置 SSE 端点的 HTTP 路径。                                                                                                                                            |
 
 ## 联系我
 

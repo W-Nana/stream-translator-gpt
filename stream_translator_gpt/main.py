@@ -19,6 +19,7 @@ from .audio_slicer import AudioSlicer
 from .audio_transcriber import _install_stderr_filter, OpenaiWhisper, FasterWhisper, Qwen3ASR, SimulStreaming, RemoteOpenaiTranscriber
 from .llm_translator import LLMClient, ParallelTranslator, SerialTranslator
 from .result_exporter import ResultExporter
+from .sse_server import SSEBroadcaster
 from . import __version__
 
 
@@ -31,18 +32,25 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
          translation_timeout, use_json_result, retry_if_translation_fails, temperature, top_p, top_k, prompt_cache_key,
          reasoning_effort, verbosity, service_tier, debug_mode, processing_proxy, output_timestamps,
          hide_transcribe_result, output_file_path, cqhttp_url, cqhttp_token, discord_webhook_url, telegram_token,
-         telegram_chat_id, output_proxy):
+         telegram_chat_id, output_proxy, sse_host, sse_port, sse_path):
     if openai_base_url:
         os.environ['OPENAI_BASE_URL'] = openai_base_url
 
     _install_stderr_filter()
     ApiKeyPool.init(openai_api_key=openai_api_key, google_api_key=google_api_key)
+    sse_server = None
+    if sse_port is not None:
+        sse_server = SSEBroadcaster(host=sse_host, port=sse_port, path=sse_path)
+        sse_server.start()
+        sse_server.publish_lifecycle(
+            'ready', f'SSE endpoint available at http://{sse_server.bound_host}:{sse_server.bound_port}{sse_server.path}'
+        )
 
     # Init queues
     getter_to_slicer_queue = queue.SimpleQueue()
     slicer_to_transcriber_queue = queue.SimpleQueue()
     transcriber_to_translator_queue = queue.SimpleQueue()
-    translator_to_exporter_queue = queue.SimpleQueue() if translation_prompt else transcriber_to_translator_queue
+    exporter_input_queue = queue.SimpleQueue()
 
     # Init workers
     with ThreadPoolExecutor() as executor:
@@ -155,6 +163,7 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
             proxy=output_proxy,
             output_whisper_result=not hide_transcribe_result,
             output_timestamps=output_timestamps,
+            sse_server=sse_server,
         )
 
         audio_getter = audio_getter_future.result()
@@ -167,32 +176,40 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
         signal.signal(signal.SIGINT, audio_getter._exit_handler)
 
     print(f'{INFO}Initialization complete, starting up...')
+    if sse_server:
+        sse_server.publish_lifecycle('started', 'Processing pipeline started.')
 
     # Start working
-    start_daemon_thread(audio_getter.loop, output_queue=getter_to_slicer_queue)
-    start_daemon_thread(
-        slicer.loop,
-        input_queue=getter_to_slicer_queue,
-        output_queue=slicer_to_transcriber_queue,
-    )
-    start_daemon_thread(
-        transcriber.loop,
-        input_queue=slicer_to_transcriber_queue,
-        output_queue=transcriber_to_translator_queue,
-    )
-    if translator:
+    try:
+        start_daemon_thread(audio_getter.loop, output_queue=getter_to_slicer_queue)
         start_daemon_thread(
-            translator.loop,
-            input_queue=transcriber_to_translator_queue,
-            output_queue=translator_to_exporter_queue,
+            slicer.loop,
+            input_queue=getter_to_slicer_queue,
+            output_queue=slicer_to_transcriber_queue,
         )
-    exporter_thread = start_daemon_thread(
-        exporter.loop,
-        input_queue=translator_to_exporter_queue,
-    )
+        start_daemon_thread(
+            transcriber.loop,
+            input_queue=slicer_to_transcriber_queue,
+            output_queue=transcriber_to_translator_queue if translator else exporter_input_queue,
+            preview_output_queue=exporter_input_queue if translator else None,
+        )
+        if translator:
+            start_daemon_thread(
+                translator.loop,
+                input_queue=transcriber_to_translator_queue,
+                output_queue=exporter_input_queue,
+            )
+        exporter_thread = start_daemon_thread(
+            exporter.loop,
+            input_queue=exporter_input_queue,
+        )
 
-    while exporter_thread.is_alive():
-        time.sleep(1)
+        while exporter_thread.is_alive():
+            time.sleep(1)
+    finally:
+        if sse_server:
+            sse_server.publish_lifecycle('stopped', 'Processing pipeline stopped.')
+            sse_server.close()
     print(f'{INFO}All processing completed, program exits.')
 
 
@@ -238,7 +255,7 @@ def cli():
         type=str,
         default='ba/wa*',
         help=
-        'Stream format code, this parameter will be passed directly to yt-dlp. You can get the list of available format codes by \"yt-dlp \{url\} -F\"'
+        'Stream format code, this parameter will be passed directly to yt-dlp. You can get the list of available format codes by "yt-dlp {url} -F"'
     )
     parser.add_argument('--list_format', action='store_true', help='Print all available formats then exit.')
     parser.add_argument('--cookies',
@@ -463,6 +480,18 @@ def cli():
         type=str,
         default=None,
         help='Use the specified HTTP/HTTPS/SOCKS proxy for Cqhttp/Discord/Telegram, e.g. http://127.0.0.1:7890.')
+    parser.add_argument('--sse_host',
+                        type=str,
+                        default='127.0.0.1',
+                        help='Bind host for the built-in SSE server.')
+    parser.add_argument('--sse_port',
+                        type=int,
+                        default=None,
+                        help='If set, starts a built-in SSE server on this port.')
+    parser.add_argument('--sse_path',
+                        type=str,
+                        default='/events',
+                        help='HTTP path for the built-in SSE endpoint.')
 
     args = parser.parse_args().__dict__
 

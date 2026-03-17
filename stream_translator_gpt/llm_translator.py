@@ -292,6 +292,7 @@ class ParallelTranslator(LoopWorkerBase):
                     print(f'Translation timeout: {task.transcript}')
                 else:
                     print(f'Translation failed: {task.transcript}')
+            task.output_stage = 'translation'
             results.append(task)
         return results
 
@@ -350,6 +351,7 @@ class SerialTranslator(LoopWorkerBase):
                                 self._trigger(current_task)
                                 time.sleep(backoff)
                                 continue
+                    current_task.output_stage = 'translation'
                     output_queue.put(current_task)
                     current_task = None
 

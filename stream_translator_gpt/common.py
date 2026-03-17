@@ -3,6 +3,7 @@ import re
 import threading
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
+from typing import Optional
 from urllib.parse import urlparse
 
 import numpy as np
@@ -24,7 +25,14 @@ ERROR = f'{RED}[ERROR]{ENDC} '
 
 class TranslationTask:
 
-    def __init__(self, audio: np.array, time_range: tuple[float, float]):
+    _id_lock = threading.Lock()
+    _next_id = 0
+
+    def __init__(self,
+                 audio: Optional[np.array],
+                 time_range: tuple[float, float],
+                 task_id: Optional[int] = None,
+                 output_stage: str = 'complete'):
         self.audio = audio
         self.transcript = None
         self.context_transcripts = None
@@ -32,6 +40,22 @@ class TranslationTask:
         self.time_range = time_range
         self.start_time = None
         self.translation_failed = False
+        self.output_stage = output_stage
+        if task_id is None:
+            with self._id_lock:
+                self.task_id = self._next_id
+                TranslationTask._next_id += 1
+        else:
+            self.task_id = task_id
+
+    def make_output_task(self, output_stage: str):
+        task = TranslationTask(audio=None, time_range=self.time_range, task_id=self.task_id, output_stage=output_stage)
+        task.transcript = self.transcript
+        task.context_transcripts = self.context_transcripts
+        task.translation = self.translation
+        task.start_time = self.start_time
+        task.translation_failed = self.translation_failed
+        return task
 
 
 class LoopWorkerBase(ABC):

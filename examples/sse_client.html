@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSE Client Example</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f4efe6;
+            --panel: #fffaf2;
+            --line: #d7c6a8;
+            --text: #2e2418;
+            --muted: #7a6850;
+            --accent: #9e4f2c;
+            --accent-soft: #f0d5b8;
+            --ok: #256f4f;
+            --warn: #8b3b2e;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(158, 79, 44, 0.14), transparent 30%),
+                linear-gradient(180deg, #f8f3eb 0%, var(--bg) 100%);
+            color: var(--text);
+        }
+
+        .wrap {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 32px 20px 48px;
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: clamp(28px, 5vw, 42px);
+            line-height: 1;
+            letter-spacing: -0.03em;
+        }
+
+        .sub {
+            margin: 0 0 24px;
+            color: var(--muted);
+        }
+
+        .panel {
+            background: rgba(255, 250, 242, 0.9);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            padding: 18px;
+            box-shadow: 0 14px 36px rgba(72, 43, 20, 0.08);
+            backdrop-filter: blur(10px);
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            gap: 12px;
+            align-items: end;
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid var(--line);
+            background: white;
+            color: var(--text);
+            font: inherit;
+        }
+
+        button {
+            padding: 12px 16px;
+            border: 0;
+            border-radius: 14px;
+            background: var(--accent);
+            color: white;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        button.secondary {
+            background: #6d5b44;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 14px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--text);
+            font-size: 14px;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--warn);
+        }
+
+        .dot.live {
+            background: var(--ok);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr;
+            gap: 18px;
+        }
+
+        .events {
+            display: grid;
+            gap: 12px;
+        }
+
+        .card {
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 14px;
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .meta {
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        .text {
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+
+        pre {
+            margin: 0;
+            padding: 14px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: #2b2219;
+            color: #f9edda;
+            overflow: auto;
+            min-height: 420px;
+        }
+
+        @media (max-width: 760px) {
+            .controls,
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <h1>SSE Client Example</h1>
+        <p class="sub">Connect to the built-in `stream-translator-gpt` SSE endpoint and watch `lifecycle` / `result` events.</p>
+
+        <div class="panel">
+            <div class="controls">
+                <div>
+                    <label for="endpoint">Endpoint</label>
+                    <input id="endpoint" value="http://127.0.0.1:18000/events">
+                </div>
+                <button id="connectBtn">Connect</button>
+                <button id="disconnectBtn" class="secondary">Disconnect</button>
+            </div>
+
+            <div class="status">
+                <span id="statusDot" class="dot"></span>
+                <span id="statusText">Disconnected</span>
+            </div>
+
+            <div class="grid">
+                <div>
+                    <div id="events" class="events"></div>
+                </div>
+                <div>
+                    <pre id="rawLog"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let source = null;
+        const taskCards = new Map();
+        const endpointInput = document.getElementById("endpoint");
+        const connectBtn = document.getElementById("connectBtn");
+        const disconnectBtn = document.getElementById("disconnectBtn");
+        const statusDot = document.getElementById("statusDot");
+        const statusText = document.getElementById("statusText");
+        const eventsEl = document.getElementById("events");
+        const rawLogEl = document.getElementById("rawLog");
+
+        function setStatus(text, connected) {
+            statusText.textContent = text;
+            statusDot.classList.toggle("live", connected);
+        }
+
+        function appendRaw(label, payload) {
+            rawLogEl.textContent = `[${new Date().toLocaleTimeString()}] ${label}\n${payload}\n\n` + rawLogEl.textContent;
+        }
+
+        function ensureTaskCard(taskId) {
+            let entry = taskCards.get(taskId);
+            if (entry) {
+                return entry;
+            }
+
+            const card = document.createElement("div");
+            card.className = "card";
+            card.innerHTML = `
+                <div class="meta"></div>
+                <div><strong>Result</strong></div>
+                <div class="text transcript"></div>
+                <div class="text translation"></div>
+            `;
+            eventsEl.prepend(card);
+
+            entry = {
+                card,
+                meta: card.querySelector(".meta"),
+                transcript: card.querySelector(".transcript"),
+                translation: card.querySelector(".translation"),
+            };
+            taskCards.set(taskId, entry);
+            return entry;
+        }
+
+        function renderTask(payload) {
+            const entry = ensureTaskCard(payload.task_id);
+            const range = `${payload.time_range.start_text} -> ${payload.time_range.end_text}`;
+            entry.meta.textContent = `${range} • stage=${payload.output_stage} • failed=${payload.translation_failed}`;
+
+            if (payload.output_stage === "transcript") {
+                entry.transcript.textContent = payload.transcript || "";
+                entry.translation.textContent = "";
+            } else if (payload.output_stage === "translation") {
+                entry.translation.textContent = payload.translation || "";
+            } else {
+                entry.transcript.textContent = payload.transcript || "";
+                entry.translation.textContent = payload.translation || "";
+            }
+
+            if (entry.translation.textContent) {
+                entry.translation.style.marginTop = "10px";
+                entry.translation.style.paddingTop = "10px";
+                entry.translation.style.borderTop = "1px solid var(--line)";
+            } else {
+                entry.translation.style.marginTop = "";
+                entry.translation.style.paddingTop = "";
+                entry.translation.style.borderTop = "";
+            }
+        }
+
+        function closeSource() {
+            if (source) {
+                source.close();
+                source = null;
+            }
+            setStatus("Disconnected", false);
+        }
+
+        function connect() {
+            closeSource();
+            eventsEl.innerHTML = "";
+            rawLogEl.textContent = "";
+            taskCards.clear();
+
+            source = new EventSource(endpointInput.value);
+            setStatus("Connecting...", false);
+
+            source.onopen = () => {
+                setStatus("Connected", true);
+            };
+
+            source.onerror = () => {
+                setStatus("Connection error", false);
+            };
+
+            source.addEventListener("lifecycle", (event) => {
+                const payload = JSON.parse(event.data);
+                const card = document.createElement("div");
+                card.className = "card";
+                card.innerHTML = `
+                    <div class="meta">${payload.status} • ${payload.timestamp}</div>
+                    <div><strong>Lifecycle</strong></div>
+                    <div class="text">${payload.message || ""}</div>
+                `;
+                eventsEl.prepend(card);
+                appendRaw("lifecycle", event.data);
+            });
+
+            source.addEventListener("result", (event) => {
+                const payload = JSON.parse(event.data);
+                renderTask(payload);
+                appendRaw("result", event.data);
+            });
+        }
+
+        connectBtn.addEventListener("click", connect);
+        disconnectBtn.addEventListener("click", closeSource);
+    </script>
+</body>
+</html>

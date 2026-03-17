@@ -11,7 +11,7 @@ class ResultExporter(LoopWorkerBase):
 
     def __init__(self, cqhttp_url: str, cqhttp_token: str, discord_webhook_url: str, telegram_token: str,
                  telegram_chat_id: int, output_file_path: str, proxy: str, output_whisper_result: bool,
-                 output_timestamps: bool) -> None:
+                 output_timestamps: bool, sse_server=None) -> None:
         self.proxies = {"http": proxy, "https": proxy} if proxy else None
         self.cqhttp_queue = None
         self.discord_queue = None
@@ -19,6 +19,7 @@ class ResultExporter(LoopWorkerBase):
         self.file_queue = None
         self.output_whisper_result = output_whisper_result
         self.output_timestamps = output_timestamps
+        self.sse_server = sse_server
 
         if cqhttp_url:
             self.cqhttp_queue = queue.SimpleQueue()
@@ -94,22 +95,43 @@ class ResultExporter(LoopWorkerBase):
                     self.file_queue.put(None)
                 break
             timestamp_text = f'{sec2str(task.time_range[0])} --> {sec2str(task.time_range[1])}'
-            text_to_send = (task.transcript + '\n') if self.output_whisper_result else ''
-            if self.output_timestamps:
-                text_to_send = timestamp_text + '\n' + text_to_send
-            if task.translation:
-                text_to_print = task.translation
+            text_to_send = ''
+
+            if task.output_stage == 'transcript':
+                if self.output_whisper_result and task.transcript:
+                    text_to_send = task.transcript
+                    if self.output_timestamps:
+                        text_to_send = timestamp_text + '\n' + text_to_send
+            elif task.output_stage == 'translation':
+                if task.translation:
+                    text_to_print = task.translation
+                    if self.output_timestamps:
+                        text_to_print = timestamp_text + ' ' + text_to_print
+                    text_to_print = text_to_print.strip()
+                    print(f'{BOLD}{text_to_print}{ENDC}')
+                    text_to_send = task.translation
+                    if self.output_timestamps:
+                        text_to_send = timestamp_text + '\n' + text_to_send
+            else:
+                text_to_send = (task.transcript + '\n') if self.output_whisper_result else ''
                 if self.output_timestamps:
-                    text_to_print = timestamp_text + ' ' + text_to_print
-                text_to_print = text_to_print.strip()
-                print(f'{BOLD}{text_to_print}{ENDC}')
-                text_to_send += task.translation
+                    text_to_send = timestamp_text + '\n' + text_to_send
+                if task.translation:
+                    text_to_print = task.translation
+                    if self.output_timestamps:
+                        text_to_print = timestamp_text + ' ' + text_to_print
+                    text_to_print = text_to_print.strip()
+                    print(f'{BOLD}{text_to_print}{ENDC}')
+                    text_to_send += task.translation
+
             text_to_send = text_to_send.strip()
-            if self.cqhttp_queue:
+            if self.sse_server:
+                self.sse_server.publish_result(task, self.output_whisper_result, self.output_timestamps)
+            if text_to_send and self.cqhttp_queue:
                 self.cqhttp_queue.put(text_to_send)
-            if self.discord_queue:
+            if text_to_send and self.discord_queue:
                 self.discord_queue.put(text_to_send)
-            if self.telegram_queue:
+            if text_to_send and self.telegram_queue:
                 self.telegram_queue.put(text_to_send)
-            if self.file_queue:
+            if text_to_send and self.file_queue:
                 self.file_queue.put(text_to_send)
