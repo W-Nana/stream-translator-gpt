@@ -133,3 +133,5 @@ dmypy.json
 
 # IDE specific files
 .cursorrules
+.opencode
+
