@@ -95,6 +95,12 @@ data: {"task_id":3,"output_stage":"transcript",...}
 - `task_id`: 同一段音频的稳定 ID
 - `output_stage`: `transcript` | `translation` | `complete`
 - `timestamp`: 事件发送时间，UTC ISO 8601
+- `timing.transcription_started_at`: 转录开始时间，UTC ISO 8601，可能为 `null`
+- `timing.transcription_completed_at`: 转录完成时间，UTC ISO 8601，可能为 `null`
+- `timing.transcription_duration_ms`: 单段转录耗时，单位毫秒，可能为 `null`
+- `timing.translation_started_at`: 翻译开始时间，UTC ISO 8601，可能为 `null`
+- `timing.translation_completed_at`: 翻译完成时间，UTC ISO 8601，可能为 `null`
+- `timing.translation_duration_ms`: 翻译整体耗时，单位毫秒，包含等待、重试与实际调用时间，可能为 `null`
 - `time_range.start`: 音频片段开始秒数
 - `time_range.end`: 音频片段结束秒数
 - `time_range.start_text`: 格式化开始时间
@@ -127,6 +133,14 @@ data: {"task_id":3,"output_stage":"transcript",...}
   "task_id": 7,
   "output_stage": "transcript",
   "timestamp": "2026-03-18T12:35:01.120Z",
+  "timing": {
+    "transcription_started_at": "2026-03-18T12:35:00.810Z",
+    "transcription_completed_at": "2026-03-18T12:35:01.118Z",
+    "transcription_duration_ms": 308,
+    "translation_started_at": null,
+    "translation_completed_at": null,
+    "translation_duration_ms": null
+  },
   "time_range": {
     "start": 12.3,
     "end": 17.8,
@@ -149,6 +163,14 @@ data: {"task_id":3,"output_stage":"transcript",...}
   "task_id": 7,
   "output_stage": "translation",
   "timestamp": "2026-03-18T12:35:02.904Z",
+  "timing": {
+    "transcription_started_at": "2026-03-18T12:35:00.810Z",
+    "transcription_completed_at": "2026-03-18T12:35:01.118Z",
+    "transcription_duration_ms": 308,
+    "translation_started_at": "2026-03-18T12:35:01.121Z",
+    "translation_completed_at": "2026-03-18T12:35:02.903Z",
+    "translation_duration_ms": 1782
+  },
   "time_range": {
     "start": 12.3,
     "end": 17.8,
@@ -171,6 +193,14 @@ data: {"task_id":3,"output_stage":"transcript",...}
   "task_id": 8,
   "output_stage": "complete",
   "timestamp": "2026-03-18T12:35:05.001Z",
+  "timing": {
+    "transcription_started_at": "2026-03-18T12:35:04.770Z",
+    "transcription_completed_at": "2026-03-18T12:35:05.000Z",
+    "transcription_duration_ms": 230,
+    "translation_started_at": null,
+    "translation_completed_at": null,
+    "translation_duration_ms": null
+  },
   "time_range": {
     "start": 18.0,
     "end": 21.4,
@@ -193,6 +223,8 @@ data: {"task_id":3,"output_stage":"transcript",...}
 - 收到 `translation` 时追加到同一条记录
 - 不要假设 `translation` 一定存在
 - `translation_failed=true` 时可保留 transcript，并标记翻译失败
+- `timing.transcription_duration_ms` 可直接用于展示 ASR 耗时
+- `timing.translation_duration_ms` 更接近用户体感延迟，因为它统计的是整体翻译耗时
 - `display_text` 适合直接展示
 - 如果要做结构化 UI，优先使用 `transcript`、`translation`、`time_range`、`output_stage`
 

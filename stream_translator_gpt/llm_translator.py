@@ -50,6 +50,12 @@ def _is_task_timeout(task: TranslationTask, timeout: float) -> bool:
     return datetime.now(timezone.utc) - task.start_time > timedelta(seconds=timeout)
 
 
+def _mark_translation_completed(task: TranslationTask):
+    task.translation_completed_at = TranslationTask.utcnow()
+    if task.start_time is not None:
+        task.translation_duration_ms = int((task.translation_completed_at - task.start_time).total_seconds() * 1000)
+
+
 class LLMClient():
 
     class LLM_TYPE:
@@ -267,6 +273,10 @@ class ParallelTranslator(LoopWorkerBase):
     def _trigger(self, translation_task: TranslationTask):
         if not translation_task.start_time:
             translation_task.start_time = datetime.now(timezone.utc)
+        if translation_task.translation_started_at is None:
+            translation_task.translation_started_at = translation_task.start_time
+        translation_task.translation_completed_at = None
+        translation_task.translation_duration_ms = None
         translation_task.translation_failed = False
         thread = threading.Thread(target=self.llm_client.translate, args=(translation_task,))
         thread.daemon = True
@@ -292,6 +302,7 @@ class ParallelTranslator(LoopWorkerBase):
                     print(f'Translation timeout: {task.transcript}')
                 else:
                     print(f'Translation failed: {task.transcript}')
+            _mark_translation_completed(task)
             task.output_stage = 'translation'
             results.append(task)
         return results
@@ -329,6 +340,10 @@ class SerialTranslator(LoopWorkerBase):
     def _trigger(self, translation_task: TranslationTask):
         if not translation_task.start_time:
             translation_task.start_time = datetime.now(timezone.utc)
+        if translation_task.translation_started_at is None:
+            translation_task.translation_started_at = translation_task.start_time
+        translation_task.translation_completed_at = None
+        translation_task.translation_duration_ms = None
         translation_task.translation_failed = False
         thread = threading.Thread(target=self.llm_client.translate, args=(translation_task,))
         thread.daemon = True
@@ -351,6 +366,7 @@ class SerialTranslator(LoopWorkerBase):
                                 self._trigger(current_task)
                                 time.sleep(backoff)
                                 continue
+                    _mark_translation_completed(current_task)
                     current_task.output_stage = 'translation'
                     output_queue.put(current_task)
                     current_task = None

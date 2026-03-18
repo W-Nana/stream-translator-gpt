@@ -97,6 +97,14 @@ class SSEBroadcaster:
             'task_id': task.task_id,
             'output_stage': task.output_stage,
             'timestamp': self._utcnow(),
+            'timing': {
+                'transcription_started_at': TranslationTask.isoformat_or_none(task.transcription_started_at),
+                'transcription_completed_at': TranslationTask.isoformat_or_none(task.transcription_completed_at),
+                'transcription_duration_ms': task.transcription_duration_ms,
+                'translation_started_at': TranslationTask.isoformat_or_none(task.translation_started_at),
+                'translation_completed_at': TranslationTask.isoformat_or_none(task.translation_completed_at),
+                'translation_duration_ms': task.translation_duration_ms,
+            },
             'time_range': {
                 'start': task.time_range[0],
                 'end': task.time_range[1],

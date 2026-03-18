@@ -1,6 +1,7 @@
 import os
 import re
 import threading
+import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Optional
@@ -41,6 +42,12 @@ class TranslationTask:
         self.start_time = None
         self.translation_failed = False
         self.output_stage = output_stage
+        self.transcription_started_at = None
+        self.transcription_completed_at = None
+        self.transcription_duration_ms = None
+        self.translation_started_at = None
+        self.translation_completed_at = None
+        self.translation_duration_ms = None
         if task_id is None:
             with self._id_lock:
                 self.task_id = self._next_id
@@ -55,7 +62,29 @@ class TranslationTask:
         task.translation = self.translation
         task.start_time = self.start_time
         task.translation_failed = self.translation_failed
+        task.transcription_started_at = self.transcription_started_at
+        task.transcription_completed_at = self.transcription_completed_at
+        task.transcription_duration_ms = self.transcription_duration_ms
+        task.translation_started_at = self.translation_started_at
+        task.translation_completed_at = self.translation_completed_at
+        task.translation_duration_ms = self.translation_duration_ms
         return task
+
+    @staticmethod
+    def utcnow():
+        return datetime.now(timezone.utc)
+
+    @staticmethod
+    def isoformat_or_none(value: Optional[datetime]):
+        if value is None:
+            return None
+        return value.isoformat().replace('+00:00', 'Z')
+
+    @staticmethod
+    def elapsed_ms(start_monotonic: float, end_monotonic: Optional[float] = None):
+        if end_monotonic is None:
+            end_monotonic = time.perf_counter()
+        return int((end_monotonic - start_monotonic) * 1000)
 
 
 class LoopWorkerBase(ABC):

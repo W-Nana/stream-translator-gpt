@@ -4,6 +4,7 @@ import queue
 import re
 import atexit
 import threading
+import time
 from abc import abstractmethod
 from scipy.io.wavfile import write as write_audio
 
@@ -108,7 +109,11 @@ class AudioTranscriber(LoopWorkerBase):
             if not initial_prompt:
                 initial_prompt = None
 
+            transcription_started_monotonic = time.perf_counter()
+            task.transcription_started_at = TranslationTask.utcnow()
             text, tokens = self.transcribe(task.audio, initial_prompt=initial_prompt)
+            task.transcription_completed_at = TranslationTask.utcnow()
+            task.transcription_duration_ms = TranslationTask.elapsed_ms(transcription_started_monotonic)
 
             if self.constant_prompt and text.strip().rstrip(',') == self.constant_prompt.strip().rstrip(','):
                 text = ""

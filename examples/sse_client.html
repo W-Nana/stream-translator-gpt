@@ -144,6 +144,43 @@
             margin-bottom: 8px;
         }
 
+        .title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .timing {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .timing span {
+            padding: 4px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.8);
+            font-size: 12px;
+            color: var(--muted);
+        }
+
         .text {
             white-space: pre-wrap;
             line-height: 1.5;
@@ -219,6 +256,20 @@
             rawLogEl.textContent = `[${new Date().toLocaleTimeString()}] ${label}\n${payload}\n\n` + rawLogEl.textContent;
         }
 
+        function formatDuration(ms) {
+            if (typeof ms !== "number" || Number.isNaN(ms)) {
+                return "pending";
+            }
+            return `${ms} ms`;
+        }
+
+        function formatStage(stage) {
+            if (!stage) {
+                return "unknown";
+            }
+            return stage;
+        }
+
         function ensureTaskCard(taskId) {
             let entry = taskCards.get(taskId);
             if (entry) {
@@ -229,7 +280,14 @@
             card.className = "card";
             card.innerHTML = `
                 <div class="meta"></div>
-                <div><strong>Result</strong></div>
+                <div class="title">
+                    <strong>Result #${taskId}</strong>
+                    <span class="badge stage"></span>
+                </div>
+                <div class="timing">
+                    <span class="asr-latency"></span>
+                    <span class="translation-latency"></span>
+                </div>
                 <div class="text transcript"></div>
                 <div class="text translation"></div>
             `;
@@ -238,6 +296,9 @@
             entry = {
                 card,
                 meta: card.querySelector(".meta"),
+                stage: card.querySelector(".stage"),
+                asrLatency: card.querySelector(".asr-latency"),
+                translationLatency: card.querySelector(".translation-latency"),
                 transcript: card.querySelector(".transcript"),
                 translation: card.querySelector(".translation"),
             };
@@ -247,17 +308,30 @@
 
         function renderTask(payload) {
             const entry = ensureTaskCard(payload.task_id);
-            const range = `${payload.time_range.start_text} -> ${payload.time_range.end_text}`;
-            entry.meta.textContent = `${range} • stage=${payload.output_stage} • failed=${payload.translation_failed}`;
+            const timeRange = payload.time_range || {};
+            const timing = payload.timing || {};
+            const hasRange = timeRange.start_text && timeRange.end_text;
+            const range = hasRange ? `${timeRange.start_text} -> ${timeRange.end_text}` : "No timestamps";
+            entry.meta.textContent = `${range} • event=${payload.timestamp || "unknown"} • failed=${payload.translation_failed}`;
+            entry.stage.textContent = formatStage(payload.output_stage);
+            entry.asrLatency.textContent = `ASR: ${formatDuration(timing.transcription_duration_ms)}`;
+            entry.translationLatency.textContent = `Translation: ${formatDuration(timing.translation_duration_ms)}`;
 
             if (payload.output_stage === "transcript") {
-                entry.transcript.textContent = payload.transcript || "";
+                entry.transcript.textContent = payload.display_text || payload.transcript || "";
                 entry.translation.textContent = "";
             } else if (payload.output_stage === "translation") {
+                if (!entry.transcript.textContent && payload.transcript) {
+                    entry.transcript.textContent = payload.transcript;
+                }
                 entry.translation.textContent = payload.translation || "";
             } else {
-                entry.transcript.textContent = payload.transcript || "";
+                entry.transcript.textContent = payload.transcript || payload.display_text || "";
                 entry.translation.textContent = payload.translation || "";
+            }
+
+            if (payload.translation_failed) {
+                entry.translation.textContent = entry.translation.textContent || "Translation failed";
             }
 
             if (entry.translation.textContent) {
