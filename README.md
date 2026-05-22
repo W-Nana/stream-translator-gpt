@@ -8,12 +8,13 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.10--3.12-blue" alt="Python">
   <img src="https://img.shields.io/badge/CUDA-12.4-green" alt="CUDA">
-  <img src="https://img.shields.io/badge/platform-Windows-lightgrey" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey" alt="Platform">
 </p>
 
 <img width="2381" height="1058" alt="PixPin_2026-04-05_20-48-45" src="https://github.com/user-attachments/assets/0a663535-dd94-40a6-8444-3c00844bc563" />
 
 > **⚠️ 本專案需要 NVIDIA CUDA GPU，不提供 CPU 模式。**
+> Linux 使用者需要安裝 PulseAudio 或 PipeWire 以支援系統音訊擷取。
 >
 
 ---
@@ -22,7 +23,7 @@
 
 | 類別 | 說明 |
 |------|------|
-| **音源** | YouTube / Twitch / Bilibili / X 直播 URL、麥克風、系統播放音訊（WASAPI Loopback）、本地音檔 |
+| **音源** | YouTube / Twitch / Bilibili / X 直播 URL、麥克風、系統播放音訊（Windows: WASAPI Loopback / Linux: PulseAudio Monitor）、本地音檔 |
 | **語音辨識 (ASR)** | Qwen3-ASR（0.6B / 1.7B）、faster-whisper（tiny → large-v3-turbo）、OpenAI Whisper API |
 | **翻譯** | OpenAI GPT、Google Gemini、本地 LLM（llama.cpp / Ollama） |
 | **浮動字幕** | 獨立置頂視窗，可自訂字體、顏色、透明度 |
@@ -43,6 +44,8 @@
 
 ### 從原始碼執行
 
+#### Windows (PowerShell)
+
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
@@ -59,8 +62,36 @@ cd app
 python main.py
 ```
 
+#### Linux (Bash)
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+
+# 先安裝 CUDA 版 PyTorch
+pip install torch --extra-index-url https://download.pytorch.org/whl/cu124
+
+# 安裝依賴
+pip install -r app/requirements.txt
+
+# 安裝前端依賴
+cd app/frontend && npm install && cd ..
+
+# 啟動
+cp config.example.yaml config.yaml
+python main.py
+
+# 或使用啟動腳本
+./run.sh
+```
+
+> **Linux 額外需求：**
+> - `ffmpeg`：使用系統套件管理器安裝（如 `sudo apt install ffmpeg` 或 `sudo pacman -S ffmpeg`）
+> - `portaudio`：PyAudio/sounddevice 需要（如 `sudo apt install libportaudio2` 或 `sudo pacman -S portaudio`）
+> - `llama-server`（可選）：本地 LLM 翻譯需要，從 [llama.cpp Releases](https://github.com/ggerganov/llama.cpp/releases) 下載 Linux 版
+
 > 使用本地 LLM 需另備 `llama/`（[llama.cpp Releases](https://github.com/ggerganov/llama.cpp/releases)）；  
-> ffmpeg 需加入 PATH 或將 `ffmpeg-8.1-essentials_build/` 放在專案根目錄。  
+> ffmpeg 需加入 PATH（Linux 建議用系統套件管理器安裝），或將 `ffmpeg-8.1-essentials_build/`（Windows）放在專案根目錄。  
 > 兩者都要和 `app/` 放在**同一層**。
 
 ---
@@ -243,10 +274,11 @@ stream-translator-gpt-floatwindow-ui/
 
 | 項目 | 要求 |
 |------|------|
-| OS | Windows 10/11 64-bit |
+| OS | Windows 10/11 64-bit 或 Linux（X11/Wayland） |
 | GPU | NVIDIA CUDA 相容顯卡，Driver ≥ 528 |
 | CUDA | 12.4+（建議） |
 | Python | 3.10–3.12 |
+| 音訊 | Linux 需要 PulseAudio 或 PipeWire + portaudio |
 | Node.js | ≥ 18（僅前端建構需要） |
 
 ### 外部檔案放置

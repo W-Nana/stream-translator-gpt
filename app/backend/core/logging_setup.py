@@ -88,10 +88,30 @@ def _install_exception_hook():
     sys.excepthook = _handle_exception
 
 
-def configure_logging(log_name: str, config_path: Optional[Path] = None, *, console: bool = True) -> Path:
-    """設定 root logger，回傳實際 log 檔路徑。"""
+def configure_logging(
+    log_name: str,
+    config_path: Optional[Path] = None,
+    *,
+    console: bool = True,
+    reset_log_names: Optional[list[str]] = None,
+) -> Path:
+    """設定 root logger，回傳實際 log 檔路徑。
+
+    Args:
+        reset_log_names: 啟動時清除這些名稱對應的舊 log 檔，避免無限累積。
+    """
     log_dir = resolve_log_dir()
     log_dir.mkdir(parents=True, exist_ok=True)
+
+    # 清除指定的舊 log 檔
+    if reset_log_names:
+        for name in reset_log_names:
+            old_log = log_dir / f"{name}.log"
+            try:
+                if old_log.exists():
+                    old_log.unlink()
+            except Exception:
+                pass
 
     log_level = get_configured_log_level(config_path)
     formatter = _build_formatter()

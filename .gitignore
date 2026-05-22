@@ -161,3 +161,6 @@ stream-translator-gpt/quick_test.py
 
 # ── Copilot / agent instructions ──────────────────────────────
 .github/instructions/
+
+# ── 字幕輸出目錄 ──────────────────────────────────────────────
+output/

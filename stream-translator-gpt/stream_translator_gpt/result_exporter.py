@@ -84,6 +84,8 @@ class ResultExporter(LoopWorkerBase):
     def _write_message_to_file(self, file_path: str):
         is_srt = file_path.lower().endswith('.srt')
         if file_path:
+            # 自動建立輸出目錄
+            os.makedirs(os.path.dirname(file_path) or '.', exist_ok=True)
             if os.path.exists(file_path):
                 os.remove(file_path)
         while True:

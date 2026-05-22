@@ -230,8 +230,9 @@ async def list_audio_devices():
         except Exception as e:
             print(f"Error querying SoundDevice: {e}")
         
-        # WASAPI Loopback 設備 (僅 Windows)
+        # 系統音訊迴路設備
         if sys.platform == 'win32':
+            # Windows: WASAPI Loopback
             try:
                 import pyaudiowpatch as pyaudio
                 p = pyaudio.PyAudio()
@@ -263,6 +264,24 @@ async def list_audio_devices():
                 pass
             except Exception as e:
                 print(f"Error querying WASAPI devices: {e}")
+        else:
+            # Linux: PulseAudio/PipeWire monitor sources
+            try:
+                all_devices = sd.query_devices()
+                for i, device in enumerate(all_devices):
+                    name = device.get('name', '') if isinstance(device, dict) else getattr(device, 'name', '')
+                    max_input = device.get('max_input_channels', 0) if isinstance(device, dict) else getattr(device, 'max_input_channels', 0)
+                    sample_rate = device.get('default_samplerate', 44100) if isinstance(device, dict) else getattr(device, 'default_samplerate', 44100)
+                    # PulseAudio/PipeWire monitor sources 名稱通常包含 "Monitor"
+                    if max_input > 0 and 'monitor' in name.lower():
+                        devices["system_audio"].append({
+                            "index": i,
+                            "name": name,
+                            "sample_rate": int(sample_rate),
+                            "is_default": False
+                        })
+            except Exception as e:
+                print(f"Error querying Linux audio monitors: {e}")
         
         return {
             "success": True,

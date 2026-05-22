@@ -6,6 +6,8 @@ Llama.cpp 模型管理器
 """
 import asyncio
 import logging
+import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -57,14 +59,20 @@ class LlamaManager:
         if not model_file.exists():
             raise FileNotFoundError(f"模型檔案不存在: {model_path}")
         
-        # 尋找 llama-server.exe
+        # 尋找 llama-server 執行檔（跨平台）
+        _exe_name = "llama-server.exe" if os.name == "nt" else "llama-server"
         if server_exe and Path(server_exe).exists():
             exe_path = Path(server_exe)
         else:
             # 預設路徑
-            exe_path = Path(__file__).parent.parent.parent.parent / "llama" / "llama-server.exe"
+            exe_path = Path(__file__).parent.parent.parent.parent / "llama" / _exe_name
             if not exe_path.exists():
-                raise FileNotFoundError("找不到 llama-server.exe")
+                # Linux: 也嘗試 PATH 中的 llama-server
+                llama_in_path = shutil.which("llama-server") if os.name != "nt" else None
+                if llama_in_path:
+                    exe_path = Path(llama_in_path)
+                else:
+                    raise FileNotFoundError(f"找不到 {_exe_name}")
         
         # 組建命令
         cmd = [

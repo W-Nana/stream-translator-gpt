@@ -216,21 +216,29 @@ async def start_server(config: ServerConfig, background_tasks: BackgroundTasks):
     if not model_path.exists():
         raise HTTPException(status_code=400, detail=f"模型文件不存在: {config.model_path}")
     
-    # 尋找 llama-server 執行檔
+    # 尋找 llama-server 執行檔（跨平台）
+    _exe_name = "llama-server.exe" if os.name == "nt" else "llama-server"
     if config.server_exe:
         server_exe = Path(config.server_exe)
     else:
         # 預設路徑
         possible_paths = [
             # 嘗試使用 settings Based 路徑
-            settings.BASE_DIR / "../llama/llama-server.exe",
-            settings.BASE_DIR / "llama/llama-server.exe",
+            settings.BASE_DIR / ".." / "llama" / _exe_name,
+            settings.BASE_DIR / "llama" / _exe_name,
             # CWD 相對路徑
-            Path("llama.cpp/bin/llama-server.exe"),
-            Path("llama-server.exe"),
-            Path("llama.cpp/llama-server.exe"),
-            Path("../llama/llama-server.exe")
+            Path("llama.cpp") / "bin" / _exe_name,
+            Path(_exe_name),
+            Path("llama.cpp") / _exe_name,
+            Path("..") / "llama" / _exe_name,
         ]
+        # Linux: 額外檢查 PATH 中的 llama-server
+        if os.name != "nt":
+            from shutil import which
+            llama_in_path = which("llama-server")
+            if llama_in_path:
+                possible_paths.insert(0, Path(llama_in_path))
+
         server_exe = None
         for p in possible_paths:
             if p.exists():
@@ -238,7 +246,7 @@ async def start_server(config: ServerConfig, background_tasks: BackgroundTasks):
                 break
         
         if not server_exe:
-            raise HTTPException(status_code=400, detail="找不到 llama-server.exe，請在設定中指定路徑或確認安裝位置")
+            raise HTTPException(status_code=400, detail=f"找不到 {_exe_name}，請在設定中指定路徑或確認安裝位置")
     
     # 建構命令列參數
     cmd = [

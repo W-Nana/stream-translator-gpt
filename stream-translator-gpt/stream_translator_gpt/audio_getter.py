@@ -124,7 +124,7 @@ def _resolve_ffmpeg_dir() -> str | None:
         return os.path.dirname(ffmpeg_exe)
 
     # 某些 PATH 會錯誤地放入 ...\ffmpeg.exe（檔案）而不是資料夾，這裡容錯處理
-    for raw in os.environ.get('PATH', '').split(';'):
+    for raw in os.environ.get('PATH', '').split(os.pathsep):
         p = raw.strip().strip('"')
         if not p:
             continue
@@ -212,7 +212,8 @@ def _open_stream(url: str, format: str, cookies: str, proxy: str, cwd: str):
         ) from e
 
     try:
-        ffmpeg_cmd = os.path.join(ffmpeg_dir, 'ffmpeg.exe') if ffmpeg_dir else 'ffmpeg'
+        _ffmpeg_name = 'ffmpeg.exe' if os.name == 'nt' else 'ffmpeg'
+        ffmpeg_cmd = os.path.join(ffmpeg_dir, _ffmpeg_name) if ffmpeg_dir else 'ffmpeg'
         ffmpeg_process = (ffmpeg.input('pipe:', loglevel='panic').output('pipe:',
                                                                          format='f32le',
                                                                          acodec='pcm_f32le',

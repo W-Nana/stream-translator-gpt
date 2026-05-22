@@ -127,10 +127,15 @@ class TranslationContext:
             
             # 嘗試多個可能的 Python 路徑
             possible_pythons = [
-                base_dir / '_runtime' / 'python.exe',  # 優先：打包的可攜式 Python 環境
-                base_dir.parent.parent / 'venv' / 'Scripts' / 'python.exe',  # ui2/venv
-                base_dir.parent.parent / 'stream-translator-gpt' / 'venv' / 'Scripts' / 'python.exe',
-                Path(sys.executable).parent / 'python.exe',  # 打包目錄中的 python
+                base_dir / '_runtime' / 'python.exe',  # 優先：打包的可攜式 Python 環境 (Windows)
+                base_dir / '_runtime' / 'python',  # Linux 打包環境
+                base_dir.parent.parent / 'venv' / 'Scripts' / 'python.exe',  # Windows: ui2/venv
+                base_dir.parent.parent / 'venv' / 'bin' / 'python',  # Linux: ui2/venv
+                base_dir.parent.parent / '.venv' / 'bin' / 'python',  # Linux: ui2/.venv
+                base_dir.parent.parent / 'stream-translator-gpt' / 'venv' / 'Scripts' / 'python.exe',  # Windows
+                base_dir.parent.parent / 'stream-translator-gpt' / 'venv' / 'bin' / 'python',  # Linux
+                Path(sys.executable).parent / 'python.exe',  # 打包目錄中的 python (Windows)
+                Path(sys.executable).parent / 'python',  # 打包目錄中的 python (Linux)
             ]
             
             # 添加系統 Python
@@ -258,7 +263,21 @@ class TranslationContext:
             env['PYTHONUTF8'] = '1'
             env['PYTHONUNBUFFERED'] = '1'
 
-            # 注入打包的 ffmpeg 到 PATH（確保子程序能找到 ffmpeg.exe）
+            # Linux: 注入 venv 中的 NVIDIA CUDA 函式庫路徑到 LD_LIBRARY_PATH
+            # 確保 CTranslate2/faster-whisper 能找到 libcublas.so.12 等
+            if os.name != 'nt':
+                nvidia_lib_dirs = []
+                site_packages = Path(sys.executable).parent.parent / 'lib'
+                # 搜尋 .venv/lib/pythonX.Y/site-packages/nvidia/*/lib/
+                for nvidia_dir in site_packages.rglob('nvidia/*/lib'):
+                    if nvidia_dir.is_dir():
+                        nvidia_lib_dirs.append(str(nvidia_dir))
+                if nvidia_lib_dirs:
+                    existing_ld = env.get('LD_LIBRARY_PATH', '')
+                    env['LD_LIBRARY_PATH'] = os.pathsep.join(nvidia_lib_dirs + ([existing_ld] if existing_ld else []))
+                    logger.info(f"Injected NVIDIA lib paths into LD_LIBRARY_PATH: {nvidia_lib_dirs}")
+
+            # 注入打包的 ffmpeg 到 PATH（確保子程序能找到 ffmpeg）
             if getattr(sys, 'frozen', False):
                 _base_dir = Path(sys.executable).parent
                 _ffmpeg_bin = _base_dir / 'ffmpeg' / 'bin'
@@ -312,16 +331,25 @@ class TranslationContext:
             # 讀取 stderr 的線程
             def read_stderr():
                 log_path = resolve_log_file("translator_stderr")
+                # 已知的無害 C++ 警告關鍵字，直接跳過避免刷屏
+                _noise_patterns = (
+                    "Could not initialize NNPACK",
+                    "NNPACK.cpp",
+                )
                 try:
                     for line in self.process.stderr:
                         line = line.strip()
-                        if line:
-                            logger.error(f"[STDERR] {line}")
-                            try:
-                                with open(log_path, "a", encoding="utf-8") as f:
-                                    f.write(line + "\n")
-                            except Exception as file_err:
-                                logger.error(f"Stderr log write error: {file_err}")
+                        if not line:
+                            continue
+                        # 過濾已知噪音
+                        if any(p in line for p in _noise_patterns):
+                            continue
+                        logger.error(f"[STDERR] {line}")
+                        try:
+                            with open(log_path, "a", encoding="utf-8") as f:
+                                f.write(line + "\n")
+                        except Exception as file_err:
+                            logger.error(f"Stderr log write error: {file_err}")
                 except Exception as e:
                     logger.error(f"Stderr read error: {e}")
             

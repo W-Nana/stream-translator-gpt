@@ -17,33 +17,39 @@ _cached_at: float = 0.0
 
 
 def _candidate_ffmpeg_paths() -> list[Path]:
-    """回傳可能的 ffmpeg.exe 路徑候選清單。"""
+    """回傳可能的 ffmpeg 路徑候選清單（跨平台）。"""
     candidates: list[Path] = []
+    _exe_name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
 
     # 1) PATH 中可找到的 ffmpeg
     ffmpeg_in_path = shutil.which("ffmpeg")
     if ffmpeg_in_path:
         candidates.append(Path(ffmpeg_in_path))
 
-    # 2) 打包輸出常見位置：執行檔同層 ffmpeg/bin/ffmpeg.exe
-    if getattr(os, "name", "") == "nt":
+    # 2) 打包輸出常見位置：執行檔同層 ffmpeg/bin/
+    if os.name == "nt":
         exe_dir = getattr(settings, "EXE_DIR", None)
         if exe_dir:
-            candidates.append(Path(exe_dir) / "ffmpeg" / "bin" / "ffmpeg.exe")
+            candidates.append(Path(exe_dir) / "ffmpeg" / "bin" / _exe_name)
 
-    # 3) 開發環境常見位置：專案根目錄/ffmpeg-8.1-essentials_build/.../bin/ffmpeg.exe
+    # 3) 開發環境常見位置
     # settings.BASE_DIR 在開發模式為 ui2 根目錄，parent 為專案根目錄
     project_root = settings.BASE_DIR.parent
-    candidates.append(
-        project_root
-        / "ffmpeg-8.1-essentials_build"
-        / "ffmpeg-8.1-essentials_build"
-        / "bin"
-        / "ffmpeg.exe"
-    )
+    if os.name == "nt":
+        # Windows: ffmpeg-8.1-essentials_build 目錄
+        candidates.append(
+            project_root
+            / "ffmpeg-8.1-essentials_build"
+            / "ffmpeg-8.1-essentials_build"
+            / "bin"
+            / "ffmpeg.exe"
+        )
+    else:
+        # Linux: 專案根目錄下的 ffmpeg/bin/
+        candidates.append(project_root / "ffmpeg" / "bin" / "ffmpeg")
 
-    # 4) ui2 目錄內的 ffmpeg/bin（給部分手動佈署場景）
-    candidates.append(settings.BASE_DIR / "ffmpeg" / "bin" / "ffmpeg.exe")
+    # 4) app 目錄內的 ffmpeg/bin/（給部分手動佈署場景）
+    candidates.append(settings.BASE_DIR / "ffmpeg" / "bin" / _exe_name)
 
     # 去重並保序
     unique: list[Path] = []
