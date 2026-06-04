@@ -16,6 +16,7 @@ import platformdirs
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from stream_translator_gpt import __version__
+from stream_translator_gpt.subtitle_sharing import DEFAULT_PUBLIC_PORT, SubtitleShareServer, create_task_id
 
 
 class I18n:
@@ -67,6 +68,8 @@ class I18n:
 # Global state for process management
 process = None
 is_running = False
+subtitle_share_server = SubtitleShareServer(port=DEFAULT_PUBLIC_PORT, enabled=False)
+server_info_route_attached = False
 
 # Bundled default.json location (read-only, shipped with package)
 BUNDLED_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -87,7 +90,8 @@ INPUT_KEYS = [
     "disable_transcription_context", "transcription_initial_prompt", "translation_prompt", "translation_provider",
     "gpt_model", "gemini_model", "history_size", "translation_timeout", "processing_proxy", "use_json_result",
     "retry_if_translation_fails", "show_timestamps", "hide_transcription", "output_file", "output_proxy", "cqhttp_url",
-    "cqhttp_token", "discord_hook", "telegram_token", "telegram_chat_id", "extra_cli_args"
+    "cqhttp_token", "discord_hook", "telegram_token", "telegram_chat_id", "enable_subtitle_sharing", "public_port",
+    "extra_cli_args"
 ]
 
 
@@ -203,6 +207,7 @@ def cleanup():
         except subprocess.TimeoutExpired:
             process.kill()
     is_running = False
+    subtitle_share_server.stop()
 
 
 atexit.register(cleanup)
@@ -215,6 +220,83 @@ def signal_handler(sig, frame):
 
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
+
+
+def configure_subtitle_share_server(public_port, enabled):
+    global subtitle_share_server
+    try:
+        port = int(public_port or DEFAULT_PUBLIC_PORT)
+    except (TypeError, ValueError):
+        return None, "Error: Public subtitle sharing port must be a valid integer.\n"
+    if not 1 <= port <= 65535:
+        return None, "Error: Public subtitle sharing port must be between 1 and 65535.\n"
+
+    if subtitle_share_server.port != port:
+        subtitle_share_server.stop()
+        subtitle_share_server = SubtitleShareServer(port=port, enabled=False)
+
+    subtitle_share_server.set_enabled(enabled)
+    if enabled and not subtitle_share_server.is_running:
+        try:
+            subtitle_share_server.start()
+        except OSError as e:
+            subtitle_share_server.set_enabled(False)
+            return None, f"Error: Failed to start subtitle sharing server on port {port}: {e}\n"
+
+    return subtitle_share_server, None
+
+
+def get_subtitle_server_info():
+    return {
+        "public_port": subtitle_share_server.port,
+        "enable_subtitle_sharing": bool(subtitle_share_server.enabled and subtitle_share_server.is_running),
+    }
+
+
+def attach_server_info_route():
+    global server_info_route_attached
+    if server_info_route_attached:
+        return
+    app = getattr(demo, "app", None)
+    if app is None:
+        print("Warning: unable to attach /api/server/info because Gradio app is unavailable.")
+        return
+
+    if hasattr(app, "middleware"):
+        try:
+            from starlette.responses import JSONResponse, Response
+        except Exception:
+            JSONResponse = None
+            Response = None
+        if JSONResponse and Response:
+
+            @app.middleware("http")
+            async def server_info_middleware(request, call_next):
+                if request.url.path != "/api/server/info":
+                    return await call_next(request)
+                headers = {"Access-Control-Allow-Origin": "*"}
+                if request.method == "OPTIONS":
+                    headers.update({
+                        "Access-Control-Allow-Headers": "Content-Type",
+                        "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    })
+                    return Response(status_code=204, headers=headers)
+                if request.method != "GET":
+                    return JSONResponse({"message": "Method not allowed"}, status_code=405, headers=headers)
+                return JSONResponse(get_subtitle_server_info(), headers=headers)
+
+            server_info_route_attached = True
+            return
+
+    if not hasattr(app, "get"):
+        print("Warning: unable to attach /api/server/info because Gradio app does not expose routing hooks.")
+        return
+
+    @app.get("/api/server/info")
+    async def server_info():
+        return get_subtitle_server_info()
+
+    server_info_route_attached = True
 
 
 def build_translator_command(
@@ -454,6 +536,21 @@ def get_subprocess_env():
     return env
 
 
+def format_command_for_log(cmd):
+    redacted_flags = {"--subtitle_share_token"}
+    log_cmd = []
+    redact_next = False
+    for part in cmd:
+        if redact_next:
+            log_cmd.append("***")
+            redact_next = False
+            continue
+        log_cmd.append(part)
+        if part in redacted_flags:
+            redact_next = True
+    return subprocess.list2cmdline(log_cmd)
+
+
 def run_translator(
         # Input
         input_type,
@@ -509,6 +606,8 @@ def run_translator(
         discord_hook,
         telegram_token,
         telegram_chat_id,
+        enable_subtitle_sharing,
+        public_port,
         extra_cli_args):
     global process, is_running
 
@@ -532,6 +631,17 @@ def run_translator(
     # we must ensure google_key is NOT passed to avoid accidental switch.
     if translation_provider == "GPT":
         google_key = None
+
+    subtitle_task_id = None
+    active_subtitle_share_server = None
+    if enable_subtitle_sharing:
+        active_subtitle_share_server, share_error = configure_subtitle_share_server(public_port, True)
+        if share_error:
+            yield share_error
+            return
+        subtitle_task_id = create_task_id()
+    else:
+        configure_subtitle_share_server(public_port, False)
 
     # Construct command
     cmd, error = build_translator_command(input_type=input_type,
@@ -588,9 +698,17 @@ def run_translator(
     if error:
         yield error
         return
+    if subtitle_task_id and active_subtitle_share_server:
+        active_subtitle_share_server.begin_task(subtitle_task_id, None)
+        cmd.extend([
+            "--subtitle_share_push_url",
+            f"http://127.0.0.1:{active_subtitle_share_server.port}/api/translation/push/{subtitle_task_id}",
+            "--subtitle_share_token",
+            active_subtitle_share_server.push_token,
+        ])
     # Start Process
     is_running = True
-    start_msg = f"Running command: {subprocess.list2cmdline(cmd)}\n\n"
+    start_msg = f"Running command: {format_command_for_log(cmd)}\n\n"
     log_history = [start_msg]
     yield start_msg
 
@@ -602,6 +720,8 @@ def run_translator(
                                    bufsize=1,
                                    env=get_subprocess_env(),
                                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0)
+        if subtitle_task_id and active_subtitle_share_server:
+            active_subtitle_share_server.publish_status(subtitle_task_id, {"status": "running", "pid": process.pid})
 
         # Read output in a non-blocking way for the generator
         while True:
@@ -615,10 +735,14 @@ def run_translator(
                 yield "".join(log_history)
 
         rc = process.poll()
+        if subtitle_task_id and active_subtitle_share_server:
+            active_subtitle_share_server.finish_task(subtitle_task_id, rc)
         log_history.append(f"\nProcess exited with return code {rc}\n")
         yield "".join(log_history)
 
     except Exception as e:
+        if subtitle_task_id and active_subtitle_share_server:
+            active_subtitle_share_server.finish_task(subtitle_task_id, -1)
         yield f"\nException occurred: {str(e)}\n"
     finally:
         is_running = False
@@ -872,6 +996,13 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
             with gr.Group():
                 output_proxy = gr.Textbox(label=i18n.get("output_proxy"), placeholder=i18n.get("output_proxy_ph"))
 
+            with gr.Group():
+                enable_subtitle_sharing = gr.Checkbox(label=i18n.get("enable_subtitle_sharing"),
+                                                      value=get_default("enable_subtitle_sharing", False))
+                public_port = gr.Number(value=get_default("public_port", DEFAULT_PUBLIC_PORT),
+                                        label=i18n.get("public_port"),
+                                        precision=0)
+
         with gr.Tab(i18n.get("overall")):
 
             extra_cli_args = gr.Textbox(label=i18n.get("extra_cli_args"),
@@ -1003,7 +1134,8 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                         translation_prompt, translation_provider, gpt_model, gemini_model, history_size,
                         translation_timeout, openai_base_url, google_base_url, processing_proxy, use_json_result,
                         retry_if_translation_fails, show_timestamps, hide_transcription, output_file, output_proxy,
-                        cqhttp_url, cqhttp_token, discord_hook, telegram_token, telegram_chat_id, extra_cli_args
+                        cqhttp_url, cqhttp_token, discord_hook, telegram_token, telegram_chat_id,
+                        enable_subtitle_sharing, public_port, extra_cli_args
                     ],
                     outputs=output_box,
                     concurrency_limit=1,
@@ -1149,7 +1281,9 @@ def main():
     parser.add_argument("--share", action="store_true", help="Create a public link to your interface (for Colab etc.)")
     args = parser.parse_args()
 
-    demo.queue().launch(inbrowser=True, share=args.share)
+    queued_demo = demo.queue()
+    attach_server_info_route()
+    queued_demo.launch(inbrowser=True, share=args.share)
 
 
 if __name__ == "__main__":

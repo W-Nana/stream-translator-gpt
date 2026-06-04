@@ -8,7 +8,9 @@ import warnings
 import numpy as np
 
 from .common import TranslationTask, SAMPLE_RATE, FRAME_DURATION, LoopWorkerBase
+from .torch_setup import disable_nnpack
 
+disable_nnpack(torch)
 warnings.filterwarnings('ignore')
 
 

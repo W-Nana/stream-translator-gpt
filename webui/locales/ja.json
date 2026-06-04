@@ -79,6 +79,8 @@
     "cqhttp_token_ph": "Cqhttp のトークン（サーバー側で設定されていない場合は不要）。",
     "output_proxy": "出力プロキシ",
     "output_proxy_ph": "http://127.0.0.1:7890",
+    "enable_subtitle_sharing": "字幕共有を有効化",
+    "public_port": "公開字幕ポート",
     "run": "実行",
     "stop": "停止",
     "output_log": "出力ログ",

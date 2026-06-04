@@ -31,7 +31,7 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
          translation_timeout, use_json_result, retry_if_translation_fails, temperature, top_p, top_k, prompt_cache_key,
          reasoning_effort, verbosity, service_tier, debug_mode, processing_proxy, output_timestamps,
          hide_transcribe_result, output_file_path, cqhttp_url, cqhttp_token, discord_webhook_url, telegram_token,
-         telegram_chat_id, output_proxy):
+         telegram_chat_id, output_proxy, subtitle_share_push_url, subtitle_share_token):
     if openai_base_url:
         os.environ['OPENAI_BASE_URL'] = openai_base_url
 
@@ -150,6 +150,8 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
             proxy=output_proxy,
             output_whisper_result=not hide_transcribe_result,
             output_timestamps=output_timestamps,
+            subtitle_share_push_url=subtitle_share_push_url,
+            subtitle_share_token=subtitle_share_token,
         )
 
         audio_getter = audio_getter_future.result()
@@ -233,7 +235,7 @@ def cli():
         type=str,
         default='ba/wa*',
         help=
-        'Stream format code, this parameter will be passed directly to yt-dlp. You can get the list of available format codes by \"yt-dlp \{url\} -F\"'
+        'Stream format code, this parameter will be passed directly to yt-dlp. You can get the list of available format codes by \"yt-dlp {url} -F\"'
     )
     parser.add_argument('--list_format', action='store_true', help='Print all available formats then exit.')
     parser.add_argument('--cookies',
@@ -469,6 +471,14 @@ def cli():
         type=str,
         default=None,
         help='Use the specified HTTP/HTTPS/SOCKS proxy for Cqhttp/Discord/Telegram, e.g. http://127.0.0.1:7890.')
+    parser.add_argument('--subtitle_share_push_url',
+                        type=str,
+                        default=None,
+                        help=argparse.SUPPRESS)
+    parser.add_argument('--subtitle_share_token',
+                        type=str,
+                        default=None,
+                        help=argparse.SUPPRESS)
 
     args = parser.parse_args().__dict__
 

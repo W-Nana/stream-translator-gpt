@@ -48,6 +48,8 @@
     "discord_hook": "",
     "telegram_token": "",
     "telegram_chat_id": "",
+    "enable_subtitle_sharing": false,
+    "public_port": 8765,
     "processing_proxy_trans": "",
     "openai_key_trans": "",
     "openai_base_url_trans": "",

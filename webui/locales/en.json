@@ -79,6 +79,8 @@
     "cqhttp_token_ph": "Token of cqhttp, if it is not set on the server side, it does not need to fill in.",
     "output_proxy": "Output Proxy",
     "output_proxy_ph": "http://127.0.0.1:7890",
+    "enable_subtitle_sharing": "Enable Subtitle Sharing",
+    "public_port": "Public Subtitle Port",
     "run": "Run",
     "stop": "Stop",
     "output_log": "Output Log",

@@ -167,6 +167,17 @@ Colab上的命令 [![Open In Colab](https://colab.research.google.com/assets/col
 
     ```stream-translator-gpt {网址} --language ja --translation_prompt "翻译以下日语为中文，只输出译文，不要输出原文，在一行内输出" --google_api_key {您的 Google 密钥} --hide_transcribe_result --retry_if_translation_fails --output_timestamps --output_file_path ./result.srt```
 
+### WebUI 字幕共享 API
+
+在 WebUI 的「输出」页中开启「开启字幕共享」，并设置公开字幕端口，默认值为 `8765`。
+外部客户端可按以下顺序发现并消费实时字幕流：
+
+1. 在 WebUI 服务器请求 `GET /api/server/info`，读取 `public_port` 和 `enable_subtitle_sharing`。
+2. 在公开字幕端口请求 `GET /api/translation/active-task`，读取当前 `task_id`。
+3. 在公开字幕端口请求 `GET /api/translation/stream/{task_id}`，以 `text/event-stream` 接收 SSE。
+
+SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数据包含 `timestamp`、`original`、`translated`。
+
 ### 所有选项
 
 | 选项                                    | 默认值                         | 描述                                                                                                                                                                      |

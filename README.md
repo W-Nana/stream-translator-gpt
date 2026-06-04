@@ -167,6 +167,17 @@ The commands on Colab [![Open In Colab](https://colab.research.google.com/assets
 
     ```stream-translator-gpt {URL} --language ja --translation_prompt "Translate from Japanese to Chinese" --google_api_key {your_google_key} --hide_transcribe_result --retry_if_translation_fails --output_timestamps --output_file_path ./result.srt```
 
+### WebUI subtitle sharing API
+
+In the WebUI Output tab, enable `Enable Subtitle Sharing` and choose the public subtitle port, default `8765`.
+External clients can then discover and consume the live subtitle stream with:
+
+1. `GET /api/server/info` on the WebUI server to read `public_port` and `enable_subtitle_sharing`.
+2. `GET /api/translation/active-task` on the public subtitle port to read the current `task_id`.
+3. `GET /api/translation/stream/{task_id}` on the public subtitle port to receive `text/event-stream` events.
+
+The SSE stream emits `subtitle`, `status`, heartbeat comments, and `error` events. Subtitle data contains `timestamp`, `original`, and `translated`.
+
 ### All options
 
 | Option                                  | Default Value                  | Description                                                                                                                                                                                                        |
