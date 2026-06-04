@@ -101,5 +101,8 @@
     "qwen3_asr_dtype": "Qwen3-ASR データ型",
     "qwen3_asr_device_map": "Qwen3-ASR デバイスマップ",
     "qwen3_asr_max_new_tokens": "Qwen3-ASR 最大トークン",
+    "qwen3_asr_quantization": "Qwen3-ASR 量子化",
+    "qwen3_asr_bnb_4bit_quant_type": "Qwen3-ASR 4-bit 種類",
+    "qwen3_asr_bnb_4bit_use_double_quant": "Qwen3-ASR 二重量子化",
     "hf_model_name_ph": "例：openai/whisper-large-v3-turbo"
 }

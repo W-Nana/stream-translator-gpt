@@ -346,7 +346,7 @@ class Qwen3ASRTranscriber(AudioTranscriber):
     SUPPORTED_LANGUAGE_NAMES = set(LANGUAGE_NAMES.values())
 
     def __init__(self, model: str, language: str, proxy: str, dtype: str, device_map: str, max_new_tokens: int,
-                 **kwargs) -> None:
+                 quantization: str, bnb_4bit_quant_type: str, bnb_4bit_use_double_quant: bool, **kwargs) -> None:
         super().__init__(**kwargs)
         try:
             import torch
@@ -368,11 +368,21 @@ class Qwen3ASRTranscriber(AudioTranscriber):
             if not isinstance(dtype_obj, torch.dtype):
                 raise ValueError(f'Unsupported Qwen3-ASR dtype: {dtype}')
 
+        model_kwargs = {
+            'dtype': dtype_obj,
+            'device_map': device_map,
+            'max_new_tokens': max_new_tokens,
+        }
+        quantization_config = self._build_quantization_config(torch,
+                                                              quantization=quantization,
+                                                              dtype=dtype_obj,
+                                                              bnb_4bit_quant_type=bnb_4bit_quant_type,
+                                                              bnb_4bit_use_double_quant=bnb_4bit_use_double_quant)
+        if quantization_config is not None:
+            model_kwargs['quantization_config'] = quantization_config
+
         print(f'{INFO}Loading Qwen3-ASR model: {model}')
-        self.model = Qwen3ASRModel.from_pretrained(model,
-                                                   dtype=dtype_obj,
-                                                   device_map=device_map,
-                                                   max_new_tokens=max_new_tokens)
+        self.model = Qwen3ASRModel.from_pretrained(model, **model_kwargs)
         self._set_generation_pad_token_id()
         _install_transformers_pad_token_log_filter()
         self.language = self._normalize_language(language)
@@ -434,6 +444,26 @@ class Qwen3ASRTranscriber(AudioTranscriber):
             if torch.cuda.get_device_capability(index) >= min_cap:
                 return True
         return False
+
+    @staticmethod
+    def _build_quantization_config(torch, quantization: str, dtype, bnb_4bit_quant_type: str,
+                                   bnb_4bit_use_double_quant: bool):
+        quantization = (quantization or 'none').strip().lower()
+        if quantization == 'none':
+            return None
+        try:
+            from transformers import BitsAndBytesConfig
+        except ImportError as e:
+            raise ImportError('Qwen3-ASR quantization requires transformers BitsAndBytesConfig support.') from e
+
+        if quantization in {'bnb_8bit', '8bit'}:
+            return BitsAndBytesConfig(load_in_8bit=True)
+        if quantization in {'bnb_4bit', '4bit'}:
+            return BitsAndBytesConfig(load_in_4bit=True,
+                                      bnb_4bit_compute_dtype=dtype,
+                                      bnb_4bit_quant_type=bnb_4bit_quant_type or 'nf4',
+                                      bnb_4bit_use_double_quant=bool(bnb_4bit_use_double_quant))
+        raise ValueError('Unsupported Qwen3-ASR quantization mode: %s' % quantization)
 
     def _set_generation_pad_token_id(self) -> None:
         hf_model = getattr(self.model, 'model', None)

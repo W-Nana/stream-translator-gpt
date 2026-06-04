@@ -28,12 +28,13 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
          continuous_no_speech_threshold, disable_dynamic_no_speech_threshold, prefix_retention_length, vad_threshold,
          disable_dynamic_vad_threshold, model, language, use_faster_whisper, use_simul_streaming, use_hf_asr,
          use_qwen3_asr, use_openai_transcription_api, openai_transcription_model, qwen3_asr_model, qwen3_asr_dtype,
-         qwen3_asr_device_map, qwen3_asr_max_new_tokens, transcription_filters, disable_transcription_context,
-         transcription_initial_prompt, gpt_model, gemini_model, translation_prompt, translation_history_size,
-         translation_timeout, use_json_result, retry_if_translation_fails, temperature, top_p, top_k, prompt_cache_key,
-         reasoning_effort, verbosity, service_tier, debug_mode, processing_proxy, output_timestamps,
-         hide_transcribe_result, output_file_path, cqhttp_url, cqhttp_token, discord_webhook_url, telegram_token,
-         telegram_chat_id, output_proxy, subtitle_share_push_url, subtitle_share_token):
+         qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
+         qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, transcription_filters,
+         disable_transcription_context, transcription_initial_prompt, gpt_model, gemini_model, translation_prompt,
+         translation_history_size, translation_timeout, use_json_result, retry_if_translation_fails, temperature, top_p,
+         top_k, prompt_cache_key, reasoning_effort, verbosity, service_tier, debug_mode, processing_proxy,
+         output_timestamps, hide_transcribe_result, output_file_path, cqhttp_url, cqhttp_token, discord_webhook_url,
+         telegram_token, telegram_chat_id, output_proxy, subtitle_share_push_url, subtitle_share_token):
     if openai_base_url:
         os.environ['OPENAI_BASE_URL'] = openai_base_url
 
@@ -111,6 +112,9 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
                                            dtype=qwen3_asr_dtype,
                                            device_map=qwen3_asr_device_map,
                                            max_new_tokens=qwen3_asr_max_new_tokens,
+                                           quantization=qwen3_asr_quantization,
+                                           bnb_4bit_quant_type=qwen3_asr_bnb_4bit_quant_type,
+                                           bnb_4bit_use_double_quant=qwen3_asr_bnb_4bit_use_double_quant,
                                            **common_args)
             else:
                 return OpenaiWhisper(model=model, language=language, **common_args)
@@ -364,6 +368,19 @@ def cli():
                         type=int,
                         default=512,
                         help='Maximum number of generated tokens for Qwen3-ASR.')
+    parser.add_argument('--qwen3_asr_quantization',
+                        type=str,
+                        choices=['none', 'bnb_8bit', 'bnb_4bit'],
+                        default='none',
+                        help='Quantization mode for Qwen3-ASR. Use bnb_8bit or bnb_4bit to reduce VRAM usage.')
+    parser.add_argument('--qwen3_asr_bnb_4bit_quant_type',
+                        type=str,
+                        choices=['nf4', 'fp4'],
+                        default='nf4',
+                        help='BitsAndBytes 4-bit quantization type for Qwen3-ASR.')
+    parser.add_argument('--qwen3_asr_bnb_4bit_use_double_quant',
+                        action='store_true',
+                        help='Enable nested/double quantization for Qwen3-ASR 4-bit loading.')
     parser.add_argument(
         '--transcription_filters',
         type=str,

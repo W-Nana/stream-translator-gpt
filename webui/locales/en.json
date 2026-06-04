@@ -101,5 +101,8 @@
     "qwen3_asr_dtype": "Qwen3-ASR Dtype",
     "qwen3_asr_device_map": "Qwen3-ASR Device Map",
     "qwen3_asr_max_new_tokens": "Qwen3-ASR Max Tokens",
+    "qwen3_asr_quantization": "Qwen3-ASR Quantization",
+    "qwen3_asr_bnb_4bit_quant_type": "Qwen3-ASR 4-bit Type",
+    "qwen3_asr_bnb_4bit_use_double_quant": "Qwen3-ASR Double Quant",
     "hf_model_name_ph": "e.g. openai/whisper-large-v3-turbo"
 }

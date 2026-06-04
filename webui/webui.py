@@ -85,9 +85,11 @@ INPUT_KEYS = [
     "input_type", "input_url", "device_rec_interval", "audio_source", "input_file", "input_format", "input_cookies",
     "input_proxy", "openai_key", "google_key", "openai_base_url", "google_base_url", "overall_proxy", "model_size",
     "hf_model_name", "qwen3_asr_model", "qwen3_asr_dtype", "qwen3_asr_device_map",
-    "qwen3_asr_max_new_tokens", "language", "whisper_backend", "openai_transcription_model", "vad_threshold",
-    "min_audio_len", "max_audio_len", "target_audio_len", "silence_threshold", "disable_dynamic_vad",
-    "disable_dynamic_silence", "prefix_retention_len", "filter_emoji", "filter_repetition", "filter_japanese_stream",
+    "qwen3_asr_max_new_tokens", "qwen3_asr_quantization", "qwen3_asr_bnb_4bit_quant_type",
+    "qwen3_asr_bnb_4bit_use_double_quant", "language", "whisper_backend", "openai_transcription_model",
+    "vad_threshold", "min_audio_len", "max_audio_len", "target_audio_len", "silence_threshold",
+    "disable_dynamic_vad", "disable_dynamic_silence", "prefix_retention_len", "filter_emoji", "filter_repetition",
+    "filter_japanese_stream",
     "disable_transcription_context", "transcription_initial_prompt", "translation_prompt", "translation_provider",
     "gpt_model", "gemini_model", "history_size", "translation_timeout", "processing_proxy", "use_json_result",
     "retry_if_translation_fails", "show_timestamps", "hide_transcription", "output_file", "output_proxy", "cqhttp_url",
@@ -322,6 +324,9 @@ def build_translator_command(
         qwen3_asr_dtype,
         qwen3_asr_device_map,
         qwen3_asr_max_new_tokens,
+        qwen3_asr_quantization,
+        qwen3_asr_bnb_4bit_quant_type,
+        qwen3_asr_bnb_4bit_use_double_quant,
         vad_threshold,
         min_audio_len,
         max_audio_len,
@@ -460,6 +465,11 @@ def build_translator_command(
         add_arg("--qwen3_asr_dtype", qwen3_asr_dtype, "qwen3_asr_dtype")
         add_arg("--qwen3_asr_device_map", qwen3_asr_device_map, "qwen3_asr_device_map")
         add_arg("--qwen3_asr_max_new_tokens", qwen3_asr_max_new_tokens, "qwen3_asr_max_new_tokens")
+        add_arg("--qwen3_asr_quantization", qwen3_asr_quantization, "qwen3_asr_quantization")
+        add_arg("--qwen3_asr_bnb_4bit_quant_type", qwen3_asr_bnb_4bit_quant_type,
+                "qwen3_asr_bnb_4bit_quant_type")
+        if qwen3_asr_bnb_4bit_use_double_quant:
+            cmd.append("--qwen3_asr_bnb_4bit_use_double_quant")
     else:
         add_arg("--model", model_size, "model_size")
     add_arg("--language", language, "language")
@@ -587,6 +597,9 @@ def run_translator(
         qwen3_asr_dtype,
         qwen3_asr_device_map,
         qwen3_asr_max_new_tokens,
+        qwen3_asr_quantization,
+        qwen3_asr_bnb_4bit_quant_type,
+        qwen3_asr_bnb_4bit_use_double_quant,
         vad_threshold,
         min_audio_len,
         max_audio_len,
@@ -680,6 +693,9 @@ def run_translator(
                                           qwen3_asr_dtype=qwen3_asr_dtype,
                                           qwen3_asr_device_map=qwen3_asr_device_map,
                                           qwen3_asr_max_new_tokens=qwen3_asr_max_new_tokens,
+                                          qwen3_asr_quantization=qwen3_asr_quantization,
+                                          qwen3_asr_bnb_4bit_quant_type=qwen3_asr_bnb_4bit_quant_type,
+                                          qwen3_asr_bnb_4bit_use_double_quant=qwen3_asr_bnb_4bit_use_double_quant,
                                           vad_threshold=vad_threshold,
                                           min_audio_len=min_audio_len,
                                           max_audio_len=max_audio_len,
@@ -941,6 +957,21 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                                                      label=i18n.get("qwen3_asr_max_new_tokens"),
                                                      visible=False,
                                                      precision=0)
+            with gr.Row():
+                qwen3_asr_quantization = gr.Dropdown(["none", "bnb_8bit", "bnb_4bit"],
+                                                     label=i18n.get("qwen3_asr_quantization"),
+                                                     value=get_default("qwen3_asr_quantization"),
+                                                     visible=False,
+                                                     allow_custom_value=False)
+                qwen3_asr_bnb_4bit_quant_type = gr.Dropdown(["nf4", "fp4"],
+                                                            label=i18n.get("qwen3_asr_bnb_4bit_quant_type"),
+                                                            value=get_default("qwen3_asr_bnb_4bit_quant_type"),
+                                                            visible=False,
+                                                            allow_custom_value=False)
+                qwen3_asr_bnb_4bit_use_double_quant = gr.Checkbox(
+                    label=i18n.get("qwen3_asr_bnb_4bit_use_double_quant"),
+                    value=get_default("qwen3_asr_bnb_4bit_use_double_quant"),
+                    visible=False)
             transcription_initial_prompt = gr.Textbox(label=i18n.get("transcription_initial_prompt"),
                                                       value=get_default("transcription_initial_prompt"),
                                                       placeholder=i18n.get("transcription_initial_prompt_ph"))
@@ -1113,11 +1144,16 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
             qwen3_asr_dtype: gr.update(visible=qwen_visible),
             qwen3_asr_device_map: gr.update(visible=qwen_visible),
             qwen3_asr_max_new_tokens: gr.update(visible=qwen_visible),
+            qwen3_asr_quantization: gr.update(visible=qwen_visible),
+            qwen3_asr_bnb_4bit_quant_type: gr.update(visible=qwen_visible),
+            qwen3_asr_bnb_4bit_use_double_quant: gr.update(visible=qwen_visible),
         }
 
     whisper_backend.change(update_backend_visibility, whisper_backend,
                            [openai_transcription_model, model_size, openai_transcription_group, hf_model_name,
-                            qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens])
+                            qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens,
+                            qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type,
+                            qwen3_asr_bnb_4bit_use_double_quant])
 
     # Translation Visibility
     def update_translation_visibility(choice):
@@ -1175,8 +1211,9 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                         input_type, input_url, device_rec_interval, audio_source, input_file, input_format,
                         input_cookies, input_proxy, openai_key, google_key, overall_proxy, model_size, language,
                         whisper_backend, openai_transcription_model, hf_model_name, qwen3_asr_model, qwen3_asr_dtype,
-                        qwen3_asr_device_map, qwen3_asr_max_new_tokens, vad_threshold, min_audio_len, max_audio_len,
-                        target_audio_len, silence_threshold, disable_dynamic_vad,
+                        qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
+                        qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, vad_threshold,
+                        min_audio_len, max_audio_len, target_audio_len, silence_threshold, disable_dynamic_vad,
                         disable_dynamic_silence, prefix_retention_len, filter_emoji, filter_repetition,
                         filter_japanese_stream, disable_transcription_context, transcription_initial_prompt,
                         translation_prompt, translation_provider, gpt_model, gemini_model, history_size,
