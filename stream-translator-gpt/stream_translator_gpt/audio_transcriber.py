@@ -214,12 +214,13 @@ class SimulStreaming(AudioTranscriber):
 class RemoteOpenaiTranscriber(AudioTranscriber):
     # https://platform.openai.com/docs/api-reference/audio/createTranscription?lang=python
 
-    def __init__(self, model: str, language: str, proxy: str, **kwargs) -> None:
+    def __init__(self, model: str, language: str, proxy: str, base_url: str = None, **kwargs) -> None:
         super().__init__(**kwargs)
         print(f'{INFO}Using {model} API as transcription engine.')
         self.model = model
         self.language = language
         self.proxy = proxy
+        self.base_url = base_url or None
 
     def transcribe(self, audio: np.array, initial_prompt: str = None) -> tuple[str, list | None]:
         from openai import OpenAI
@@ -240,7 +241,10 @@ class RemoteOpenaiTranscriber(AudioTranscriber):
             call_args['prompt'] = initial_prompt
 
         ApiKeyPool.use_openai_api()
-        client = OpenAI(http_client=httpx.Client(proxy=self.proxy))
+        client_kwargs = {'http_client': httpx.Client(proxy=self.proxy)}
+        if self.base_url:
+            client_kwargs['base_url'] = self.base_url
+        client = OpenAI(**client_kwargs)
         result = client.audio.transcriptions.create(**call_args).text
         return result, None
 

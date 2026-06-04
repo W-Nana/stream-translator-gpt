@@ -979,8 +979,9 @@ function getFileName(path: string): string {
             />
             <!-- OpenAI API 模型 -->
             <input v-else-if="selectedTranscriptionEngine === 'openai-api'" 
-              value="whisper-1" disabled
-              class="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white/50 cursor-not-allowed">
+              :value="store.config?.transcription?.openai_transcription_model || 'whisper-1'" disabled
+              class="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white/50 cursor-not-allowed"
+              title="在設定頁的轉錄選項中修改">
           </div>
 
           <!-- 輸入語言 -->

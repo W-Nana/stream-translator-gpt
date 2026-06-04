@@ -101,6 +101,7 @@ const localConfig = ref<any>({
     qwen3_dtype: 'bfloat16',
     qwen3_load_in_4bit: false,
     openai_transcription_model: 'whisper-1',
+    openai_transcription_base_url: '',
     whisper_filters: ['emoji_filter', 'repetition_filter']
   },
   translation: {
@@ -381,7 +382,7 @@ function resetToDefault() {
       server: { public_port: 8765, enable_subtitle_sharing: true },
       input: { url: '', source_type: 'youtube', format: 'ba/wa*', cookies: '', proxy: '', timeout: 30 },
       audio_slicing_vad: { min_audio_length: 3.0, max_audio_length: 30.0, chunk_gap_threshold: 0.5, vad_enabled: true, vad_threshold: 0.5, vad_neg_threshold: 0.35, vad_min_speech_duration_ms: 250, vad_min_silence_duration_ms: 100, vad_window_size_samples: 512, vad_speech_pad_ms: 30 },
-      transcription: { model: 'base', language: 'auto', transcription_initial_prompt: '', disable_transcription_context: false, use_faster_whisper: false, use_simul_streaming: false, use_openai_transcription_api: false, use_qwen3_asr: false, qwen3_asr_model: 'Qwen/Qwen3-ASR-1.7B', qwen3_dtype: 'bfloat16', qwen3_load_in_4bit: false, openai_transcription_model: 'whisper-1', whisper_filters: ['emoji_filter', 'repetition_filter'] },
+      transcription: { model: 'base', language: 'auto', transcription_initial_prompt: '', disable_transcription_context: false, use_faster_whisper: false, use_simul_streaming: false, use_openai_transcription_api: false, use_qwen3_asr: false, qwen3_asr_model: 'Qwen/Qwen3-ASR-1.7B', qwen3_dtype: 'bfloat16', qwen3_load_in_4bit: false, openai_transcription_model: 'whisper-1', openai_transcription_base_url: '', whisper_filters: ['emoji_filter', 'repetition_filter'] },
       translation: { backend: 'gpt', target_language: 'Traditional Chinese', llm_model: 'gpt-4o-mini', api_base: '', api_key: '', temperature: 0.3, top_p: 1.0, max_tokens: 2048, use_smart_prompt: true, translation_prompt: '', custom_models: [] },
       terminology: { use_terminology_glossary: false, glossary: '', glossary_list: [] },
       output: { output_dir: './output', output_srt: true, output_txt: false, output_ass: false, max_history: 20 },
@@ -833,6 +834,15 @@ async function handleFileChange(event: Event) {
                   type="text" 
                   placeholder="whisper-1"
                   class="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/30 focus:outline-none focus:border-blue-400" />
+                <!-- OpenAI 轉錄 Base URL -->
+                <div v-if="localConfig.transcription.use_openai_transcription_api" class="mt-4">
+                  <label class="block text-white/70 font-semibold mb-2">轉錄 API Base URL</label>
+                  <input v-model="localConfig.transcription.openai_transcription_base_url" 
+                    type="text" 
+                    placeholder="留空使用 OpenAI 預設端點"
+                    class="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/30 focus:outline-none focus:border-blue-400" />
+                  <p class="text-white/40 text-xs mt-1">自訂 OpenAI 相容 API 端點，例如：https://your-gateway.example.com/v1</p>
+                </div>
                 <!-- Qwen3-ASR 模型選擇 (下拉選單) -->
                 <UiSelect v-else-if="localConfig.transcription.use_qwen3_asr"
                   v-model="localConfig.transcription.qwen3_asr_model"

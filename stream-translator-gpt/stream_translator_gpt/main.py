@@ -30,7 +30,7 @@ def main(url, proxy, openai_api_key, google_api_key, format, cookies, input_prox
          device_recording_interval, min_audio_length, max_audio_length, target_audio_length,
          continuous_no_speech_threshold, disable_dynamic_no_speech_threshold, prefix_retention_length, vad_threshold,
          disable_dynamic_vad_threshold, model, language, use_faster_whisper, use_simul_streaming,
-         use_openai_transcription_api, use_qwen3_asr, openai_transcription_model, whisper_filters, disable_transcription_context,
+         use_openai_transcription_api, use_qwen3_asr, openai_transcription_model, openai_transcription_base_url, whisper_filters, disable_transcription_context,
          transcription_initial_prompt, qwen3_context, qwen3_dtype, qwen3_load_in_4bit,
          translation_prompt, translation_history_size, gpt_model, gemini_model,
          translation_timeout, gpt_base_url, gemini_base_url, processing_proxy, use_json_result,
@@ -121,6 +121,7 @@ def main(url, proxy, openai_api_key, google_api_key, format, cookies, input_prox
                 return RemoteOpenaiTranscriber(model=openai_transcription_model,
                                                language=language,
                                                proxy=processing_proxy,
+                                               base_url=openai_transcription_base_url,
                                                **common_args)
             else:
                 return OpenaiWhisper(model=model, language=language, **common_args)
@@ -402,6 +403,11 @@ def cli():
         type=str,
         default='gpt-4o-mini-transcribe',
         help='OpenAI\'s transcription model name, whisper-1 / gpt-4o-mini-transcribe / gpt-4o-transcribe')
+    parser.add_argument(
+        '--openai_transcription_base_url',
+        type=str,
+        default=None,
+        help='Customize the API endpoint for OpenAI Transcription API. If not set, uses the default OpenAI endpoint.')
     parser.add_argument(
         '--whisper_filters',
         type=str,

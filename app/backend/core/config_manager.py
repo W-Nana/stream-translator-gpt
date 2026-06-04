@@ -67,6 +67,7 @@ class ConfigManager:
             'qwen3_dtype': 'bfloat16',
             'qwen3_load_in_4bit': False,
             'openai_transcription_model': 'whisper-1',
+            'openai_transcription_base_url': '',
             'whisper_filters': [],
             'disable_transcription_context': False,
             'transcription_initial_prompt': ''
@@ -457,7 +458,8 @@ class ConfigManager:
             'use_simul_streaming': 'simul' in transcription_backend,
             'use_openai_transcription_api': transcription_backend == 'openai-api',
             'use_qwen3_asr': transcription_backend == 'qwen3-asr',
-            'openai_transcription_model': config['transcription'].get('openai_model', 'whisper-1'),
+            'openai_transcription_model': config['transcription'].get('openai_transcription_model', 'whisper-1') if transcription_backend == 'openai-api' else '',
+            'openai_transcription_base_url': config['transcription'].get('openai_transcription_base_url', '') if transcription_backend == 'openai-api' else '',
             'whisper_filters': config['transcription'].get('whisper_filters', []),
             'disable_transcription_context': config['transcription'].get('disable_transcription_context', False),
             'transcription_initial_prompt': config['transcription'].get('transcription_initial_prompt', ''),

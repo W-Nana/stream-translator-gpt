@@ -169,7 +169,7 @@ class TranslationContext:
             'prefix_retention_length', 'vad_threshold', 'disable_dynamic_vad_threshold',
             'vad_every_n_frames', 'realtime_processing',
             'model', 'language', 'use_faster_whisper', 'use_simul_streaming',
-            'use_openai_transcription_api', 'use_qwen3_asr', 'openai_transcription_model', 'whisper_filters',
+            'use_openai_transcription_api', 'use_qwen3_asr', 'openai_transcription_model', 'openai_transcription_base_url', 'whisper_filters',
             'transcription_initial_prompt', 'disable_transcription_context', 'qwen3_context',
             'qwen3_load_in_4bit', 'qwen3_dtype',
             'gpt_model', 'gemini_model', 'translation_prompt', 'translation_glossary', 'translation_history_size',
