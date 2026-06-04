@@ -80,6 +80,7 @@
     "output_proxy": "输出代理",
     "output_proxy_ph": "http://127.0.0.1:7890",
     "enable_subtitle_sharing": "开启字幕共享",
+    "public_host": "公开字幕 Host",
     "public_port": "公开字幕端口",
     "run": "运行",
     "stop": "停止",

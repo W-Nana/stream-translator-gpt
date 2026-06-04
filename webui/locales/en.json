@@ -80,6 +80,7 @@
     "output_proxy": "Output Proxy",
     "output_proxy_ph": "http://127.0.0.1:7890",
     "enable_subtitle_sharing": "Enable Subtitle Sharing",
+    "public_host": "Public Subtitle Host",
     "public_port": "Public Subtitle Port",
     "run": "Run",
     "stop": "Stop",

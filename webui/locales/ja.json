@@ -80,6 +80,7 @@
     "output_proxy": "出力プロキシ",
     "output_proxy_ph": "http://127.0.0.1:7890",
     "enable_subtitle_sharing": "字幕共有を有効化",
+    "public_host": "公開字幕ホスト",
     "public_port": "公開字幕ポート",
     "run": "実行",
     "stop": "停止",

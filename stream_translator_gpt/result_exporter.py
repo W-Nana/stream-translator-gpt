@@ -1,11 +1,23 @@
 import os
 import queue
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse, urlunparse
 
 import requests
 
-from .common import TranslationTask, LoopWorkerBase, sec2str, start_daemon_thread, BOLD, ENDC
+from .common import TranslationTask, LoopWorkerBase, sec2str, start_daemon_thread, BOLD, ENDC, WARNING
 from .subtitle_sharing import format_srt_timestamp
+
+
+def normalize_subtitle_share_push_url(url: str | None) -> str | None:
+    if not url:
+        return url
+    parsed = urlparse(url)
+    if parsed.hostname not in {"0.0.0.0", "::"}:
+        return url
+    netloc = "127.0.0.1"
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+    return urlunparse(parsed._replace(netloc=netloc))
 
 
 class ResultExporter(LoopWorkerBase):
@@ -20,10 +32,12 @@ class ResultExporter(LoopWorkerBase):
         self.telegram_queue = None
         self.file_queue = None
         self.subtitle_share_queue = None
-        self.subtitle_share_push_url = subtitle_share_push_url
+        self.subtitle_share_push_url = normalize_subtitle_share_push_url(subtitle_share_push_url)
         self.subtitle_share_token = subtitle_share_token
         self.output_whisper_result = output_whisper_result
         self.output_timestamps = output_timestamps
+        if subtitle_share_push_url and self.subtitle_share_push_url != subtitle_share_push_url:
+            print(f"{WARNING}Replaced subtitle share push host with 127.0.0.1: {self.subtitle_share_push_url}")
 
         if cqhttp_url:
             self.cqhttp_queue = queue.SimpleQueue()

@@ -20,6 +20,7 @@ from .audio_transcriber import (OpenaiWhisper, FasterWhisper, SimulStreaming, Re
                                 Qwen3ASRTranscriber)
 from .llm_translator import GPTTranslator, GeminiTranslator
 from .result_exporter import ResultExporter
+from .subtitle_sharing import DEFAULT_PUBLIC_HOST, DEFAULT_PUBLIC_PORT, SubtitleShareServer, create_task_id
 from . import __version__
 
 
@@ -34,7 +35,8 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
          translation_history_size, translation_timeout, use_json_result, retry_if_translation_fails, temperature, top_p,
          top_k, prompt_cache_key, reasoning_effort, verbosity, service_tier, debug_mode, processing_proxy,
          output_timestamps, hide_transcribe_result, output_file_path, cqhttp_url, cqhttp_token, discord_webhook_url,
-         telegram_token, telegram_chat_id, output_proxy, subtitle_share_push_url, subtitle_share_token):
+         telegram_token, telegram_chat_id, output_proxy, enable_subtitle_sharing, subtitle_share_public_port,
+         subtitle_share_host):
     if openai_base_url:
         os.environ['OPENAI_BASE_URL'] = openai_base_url
 
@@ -48,6 +50,30 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
     slicer_to_transcriber_queue = queue.SimpleQueue()
     transcriber_to_translator_queue = queue.SimpleQueue()
     translator_to_exporter_queue = queue.SimpleQueue() if translation_prompt else transcriber_to_translator_queue
+    managed_subtitle_share_server = None
+    managed_subtitle_share_task_id = None
+    subtitle_share_push_url = None
+    subtitle_share_token = None
+
+    if enable_subtitle_sharing:
+        try:
+            managed_subtitle_share_server = SubtitleShareServer(host=subtitle_share_host,
+                                                               port=subtitle_share_public_port,
+                                                               enabled=True)
+            managed_subtitle_share_server.start()
+        except Exception as e:
+            print(f'{ERROR}Failed to start subtitle sharing server on port {subtitle_share_public_port}: {e}')
+            sys.exit(1)
+
+        subtitle_task_id = create_task_id()
+        managed_subtitle_share_task_id = subtitle_task_id
+        managed_subtitle_share_server.begin_task(subtitle_task_id, os.getpid())
+        subtitle_share_push_url = (
+            f'http://127.0.0.1:{managed_subtitle_share_server.port}/api/translation/push/{subtitle_task_id}')
+        subtitle_share_token = managed_subtitle_share_server.push_token
+        print(f'{INFO}Subtitle sharing server started on {subtitle_share_host}:{managed_subtitle_share_server.port}')
+        print(f'{INFO}Subtitle sharing task ID: {subtitle_task_id}')
+        print(f'{INFO}Subtitle sharing API: http://127.0.0.1:{managed_subtitle_share_server.port}/api/server/info')
 
     # Init workers
     with ThreadPoolExecutor() as executor:
@@ -202,8 +228,15 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
         input_queue=translator_to_exporter_queue,
     )
 
-    while exporter_thread.is_alive():
-        time.sleep(1)
+    try:
+        while exporter_thread.is_alive():
+            time.sleep(1)
+    finally:
+        if managed_subtitle_share_server:
+            if managed_subtitle_share_task_id:
+                managed_subtitle_share_server.finish_task(managed_subtitle_share_task_id, 0)
+                time.sleep(0.2)
+            managed_subtitle_share_server.stop()
     print(f'{INFO}All processing completed, program exits.')
 
 
@@ -515,14 +548,17 @@ def cli():
         type=str,
         default=None,
         help='Use the specified HTTP/HTTPS/SOCKS proxy for Cqhttp/Discord/Telegram, e.g. http://127.0.0.1:7890.')
-    parser.add_argument('--subtitle_share_push_url',
+    parser.add_argument('--enable_subtitle_sharing',
+                        action='store_true',
+                        help='Start a public SSE subtitle sharing server from the CLI process.')
+    parser.add_argument('--subtitle_share_public_port',
+                        type=int,
+                        default=DEFAULT_PUBLIC_PORT,
+                        help='Public subtitle sharing port used with --enable_subtitle_sharing.')
+    parser.add_argument('--subtitle_share_host',
                         type=str,
-                        default=None,
-                        help=argparse.SUPPRESS)
-    parser.add_argument('--subtitle_share_token',
-                        type=str,
-                        default=None,
-                        help=argparse.SUPPRESS)
+                        default=DEFAULT_PUBLIC_HOST,
+                        help='Host/IP to bind the subtitle sharing server. Defaults to 0.0.0.0.')
 
     args = parser.parse_args().__dict__
 

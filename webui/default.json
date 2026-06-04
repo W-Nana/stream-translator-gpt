@@ -56,6 +56,7 @@
     "telegram_token": "",
     "telegram_chat_id": "",
     "enable_subtitle_sharing": false,
+    "public_host": "0.0.0.0",
     "public_port": 8765,
     "processing_proxy_trans": "",
     "openai_key_trans": "",

@@ -85,6 +85,57 @@ flowchart LR
 
 ## 安装
 
+### uv 本地部署
+
+在源码目录中，可以使用 `uv` 和 Python 3.12 部署。
+
+可选：先 source 本地环境脚本，让虚拟环境、缓存、下载的模型和临时文件留在项目目录内（`.venv`、`.cache`、`.local`、`.tmp`）。
+
+```bash
+source scripts/use-local-env.sh
+```
+
+只安装命令行：
+
+```bash
+uv python install 3.12
+uv sync
+```
+
+安装 WebUI：
+
+```bash
+uv sync --extra webui
+```
+
+如需包含 Qwen3-ASR：
+
+```bash
+# 只安装命令行
+uv sync --extra qwen_asr
+
+# WebUI
+uv sync --extra webui --extra qwen_asr
+```
+
+如果需要 CUDA，请先运行 `uv sync`，然后根据您的显卡/CUDA 环境，从 [PyTorch 安装指南](https://pytorch.org/get-started/locally/) 安装或替换兼容的 PyTorch build。安装自定义 PyTorch build 后，请直接运行虚拟环境里的入口，或使用 `uv run --no-sync ...`，避免 `uv` 在 exact sync 时替换它。
+
+启动命令行工具：
+
+```bash
+stream-translator-gpt
+# 或
+uv run --no-sync stream-translator-gpt
+```
+
+启动 WebUI：
+
+```bash
+stream-translator-gpt-webui
+# 或
+uv run --no-sync stream-translator-gpt-webui
+```
+
 ### WebUI
 
 ```
@@ -174,12 +225,18 @@ Colab上的命令 [![Open In Colab](https://colab.research.google.com/assets/col
 
     ```stream-translator-gpt {网址} --language ja --translation_prompt "翻译以下日语为中文，只输出译文，不要输出原文，在一行内输出" --google_api_key {您的 Google 密钥} --hide_transcribe_result --retry_if_translation_fails --output_timestamps --output_file_path ./result.srt```
 
-### WebUI 字幕共享 API
+### 字幕共享 API
 
 在 WebUI 的「输出」页中开启「开启字幕共享」，并设置公开字幕端口，默认值为 `8765`。
+命令行运行时，可添加 `--enable_subtitle_sharing`，由 CLI 进程启动同一个 SSE 字幕共享服务器：
+
+```bash
+stream-translator-gpt {网址} --language {输入语言} --enable_subtitle_sharing --subtitle_share_host 0.0.0.0 --subtitle_share_public_port 8765
+```
+
 外部客户端可按以下顺序发现并消费实时字幕流：
 
-1. 在 WebUI 服务器请求 `GET /api/server/info`，读取 `public_port` 和 `enable_subtitle_sharing`。
+1. 在 WebUI 服务器，或 CLI 字幕共享端口请求 `GET /api/server/info`，读取 `public_host`、`public_port` 和 `enable_subtitle_sharing`。
 2. 在公开字幕端口请求 `GET /api/translation/active-task`，读取当前 `task_id`。
 3. 在公开字幕端口请求 `GET /api/translation/stream/{task_id}`，以 `text/event-stream` 接收 SSE。
 
@@ -258,6 +315,9 @@ SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数
 | `--telegram_token`                      |                                | Telegram 机器人的 Token。                                                                                                                                                 |
 | `--telegram_chat_id`                    |                                | 如果使用，将把结果文本发送到此 Telegram 聊天。需要与 \"--telegram_token\" 配合使用。                                                                                      |
 | `--output_proxy`                        |                                | 为 Cqhttp/Discord/Telegram 使用指定的 HTTP/HTTPS/SOCKS 代理，例如 http://127.0.0.1:7890。                                                                                 |
+| `--enable_subtitle_sharing`             |                                | 从 CLI 进程启动公开 SSE 字幕共享服务器。                                                                                                                                  |
+| `--subtitle_share_host`                 | 0.0.0.0                        | 字幕共享服务器绑定的 Host/IP。使用 0.0.0.0 可监听所有网卡。                                                                                                                |
+| `--subtitle_share_public_port`          | 8765                           | 与 `--enable_subtitle_sharing` 搭配使用的公开字幕共享端口。                                                                                                                |
 
 ## 联系我
 

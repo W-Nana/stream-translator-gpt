@@ -67,7 +67,7 @@ class SubtitleShareServer:
         self.host = host
         self.port = int(port)
         self.enabled = bool(enabled)
-        self.push_token = secrets.token_urlsafe(32)
+        self.push_token = f"st_{secrets.token_urlsafe(32)}"
         self._lock = threading.RLock()
         self._tasks: dict[str, SharedTask] = {}
         self._active_task_id: str | None = None
@@ -106,7 +106,8 @@ class SubtitleShareServer:
             tasks = list(self._tasks.values())
             self._active_task_id = None
         for task in tasks:
-            self._broadcast(task, {"event": "error", "data": {"message": "Subtitle sharing is disabled"}})
+            if task.status != "completed":
+                self._broadcast(task, {"event": "error", "data": {"message": "Subtitle sharing is disabled"}})
             self._close_subscribers(task)
         if self._httpd is not None:
             self._httpd.shutdown()
@@ -182,6 +183,13 @@ class SubtitleShareServer:
                 return {"success": False, "task_id": None}
             return {"success": True, "task_id": task.task_id}
 
+    def server_info_payload(self) -> dict[str, Any]:
+        return {
+            "public_host": self.host,
+            "public_port": self.port,
+            "enable_subtitle_sharing": bool(self.enabled and self.is_running),
+        }
+
     def subscribe(self, task_id: str) -> tuple[queue.Queue, list[dict[str, Any]], dict[str, Any]] | None:
         with self._lock:
             task = self._tasks.get(task_id)
@@ -234,6 +242,9 @@ class SubtitleShareRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/server/info":
+            self._handle_server_info()
+            return
         if parsed.path == "/api/translation/active-task":
             self._handle_active_task()
             return
@@ -284,6 +295,9 @@ class SubtitleShareRequestHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: Any) -> None:
         return
+
+    def _handle_server_info(self) -> None:
+        self._send_json(HTTPStatus.OK, self.share_server.server_info_payload())
 
     def _handle_active_task(self) -> None:
         if not self.share_server.enabled:

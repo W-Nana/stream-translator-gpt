@@ -16,7 +16,7 @@ import platformdirs
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from stream_translator_gpt import __version__
-from stream_translator_gpt.subtitle_sharing import DEFAULT_PUBLIC_PORT, SubtitleShareServer, create_task_id
+from stream_translator_gpt.subtitle_sharing import DEFAULT_PUBLIC_HOST, DEFAULT_PUBLIC_PORT, SubtitleShareServer
 
 
 class I18n:
@@ -93,8 +93,8 @@ INPUT_KEYS = [
     "disable_transcription_context", "transcription_initial_prompt", "translation_prompt", "translation_provider",
     "gpt_model", "gemini_model", "history_size", "translation_timeout", "processing_proxy", "use_json_result",
     "retry_if_translation_fails", "show_timestamps", "hide_transcription", "output_file", "output_proxy", "cqhttp_url",
-    "cqhttp_token", "discord_hook", "telegram_token", "telegram_chat_id", "enable_subtitle_sharing", "public_port",
-    "extra_cli_args"
+    "cqhttp_token", "discord_hook", "telegram_token", "telegram_chat_id", "enable_subtitle_sharing", "public_host",
+    "public_port", "extra_cli_args"
 ]
 
 
@@ -225,34 +225,31 @@ signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
 
-def configure_subtitle_share_server(public_port, enabled):
+def configure_subtitle_share_server(public_host, public_port, enabled):
     global subtitle_share_server
+    host = (public_host or DEFAULT_PUBLIC_HOST).strip()
     try:
         port = int(public_port or DEFAULT_PUBLIC_PORT)
     except (TypeError, ValueError):
         return None, "Error: Public subtitle sharing port must be a valid integer.\n"
+    if not host:
+        return None, "Error: Public subtitle sharing host must not be empty.\n"
     if not 1 <= port <= 65535:
         return None, "Error: Public subtitle sharing port must be between 1 and 65535.\n"
 
-    if subtitle_share_server.port != port:
+    if subtitle_share_server.host != host or subtitle_share_server.port != port:
         subtitle_share_server.stop()
-        subtitle_share_server = SubtitleShareServer(port=port, enabled=False)
+        subtitle_share_server = SubtitleShareServer(host=host, port=port, enabled=False)
 
     subtitle_share_server.set_enabled(enabled)
-    if enabled and not subtitle_share_server.is_running:
-        try:
-            subtitle_share_server.start()
-        except OSError as e:
-            subtitle_share_server.set_enabled(False)
-            return None, f"Error: Failed to start subtitle sharing server on port {port}: {e}\n"
-
     return subtitle_share_server, None
 
 
 def get_subtitle_server_info():
     return {
+        "public_host": subtitle_share_server.host,
         "public_port": subtitle_share_server.port,
-        "enable_subtitle_sharing": bool(subtitle_share_server.enabled and subtitle_share_server.is_running),
+        "enable_subtitle_sharing": bool(subtitle_share_server.enabled),
     }
 
 
@@ -567,6 +564,9 @@ def format_command_for_log(cmd):
             log_cmd.append("***")
             redact_next = False
             continue
+        if part.startswith("--subtitle_share_token="):
+            log_cmd.append("--subtitle_share_token=***")
+            continue
         log_cmd.append(part)
         if part in redacted_flags:
             redact_next = True
@@ -636,6 +636,7 @@ def run_translator(
         telegram_token,
         telegram_chat_id,
         enable_subtitle_sharing,
+        public_host,
         public_port,
         extra_cli_args):
     global process, is_running
@@ -661,16 +662,13 @@ def run_translator(
     if translation_provider == "GPT":
         google_key = None
 
-    subtitle_task_id = None
-    active_subtitle_share_server = None
     if enable_subtitle_sharing:
-        active_subtitle_share_server, share_error = configure_subtitle_share_server(public_port, True)
+        _, share_error = configure_subtitle_share_server(public_host, public_port, True)
         if share_error:
             yield share_error
             return
-        subtitle_task_id = create_task_id()
     else:
-        configure_subtitle_share_server(public_port, False)
+        configure_subtitle_share_server(public_host, public_port, False)
 
     # Construct command
     cmd, error = build_translator_command(input_type=input_type,
@@ -734,13 +732,13 @@ def run_translator(
     if error:
         yield error
         return
-    if subtitle_task_id and active_subtitle_share_server:
-        active_subtitle_share_server.begin_task(subtitle_task_id, None)
+    if enable_subtitle_sharing:
         cmd.extend([
-            "--subtitle_share_push_url",
-            f"http://127.0.0.1:{active_subtitle_share_server.port}/api/translation/push/{subtitle_task_id}",
-            "--subtitle_share_token",
-            active_subtitle_share_server.push_token,
+            "--enable_subtitle_sharing",
+            "--subtitle_share_host",
+            public_host or DEFAULT_PUBLIC_HOST,
+            "--subtitle_share_public_port",
+            str(int(public_port or DEFAULT_PUBLIC_PORT)),
         ])
     # Start Process
     is_running = True
@@ -756,8 +754,6 @@ def run_translator(
                                    bufsize=1,
                                    env=get_subprocess_env(),
                                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0)
-        if subtitle_task_id and active_subtitle_share_server:
-            active_subtitle_share_server.publish_status(subtitle_task_id, {"status": "running", "pid": process.pid})
 
         # Read output in a non-blocking way for the generator
         while True:
@@ -771,16 +767,14 @@ def run_translator(
                 yield "".join(log_history)
 
         rc = process.poll()
-        if subtitle_task_id and active_subtitle_share_server:
-            active_subtitle_share_server.finish_task(subtitle_task_id, rc)
         log_history.append(f"\nProcess exited with return code {rc}\n")
         yield "".join(log_history)
 
     except Exception as e:
-        if subtitle_task_id and active_subtitle_share_server:
-            active_subtitle_share_server.finish_task(subtitle_task_id, -1)
         yield f"\nException occurred: {str(e)}\n"
     finally:
+        if enable_subtitle_sharing:
+            configure_subtitle_share_server(public_host, public_port, False)
         is_running = False
         process = None
 
@@ -1071,9 +1065,12 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
             with gr.Group():
                 enable_subtitle_sharing = gr.Checkbox(label=i18n.get("enable_subtitle_sharing"),
                                                       value=get_default("enable_subtitle_sharing", False))
-                public_port = gr.Number(value=get_default("public_port", DEFAULT_PUBLIC_PORT),
-                                        label=i18n.get("public_port"),
-                                        precision=0)
+                with gr.Row():
+                    public_host = gr.Textbox(value=get_default("public_host", DEFAULT_PUBLIC_HOST),
+                                             label=i18n.get("public_host"))
+                    public_port = gr.Number(value=get_default("public_port", DEFAULT_PUBLIC_PORT),
+                                            label=i18n.get("public_port"),
+                                            precision=0)
 
         with gr.Tab(i18n.get("overall")):
 
@@ -1220,7 +1217,7 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                         translation_timeout, openai_base_url, google_base_url, processing_proxy, use_json_result,
                         retry_if_translation_fails, show_timestamps, hide_transcription, output_file, output_proxy,
                         cqhttp_url, cqhttp_token, discord_hook, telegram_token, telegram_chat_id,
-                        enable_subtitle_sharing, public_port, extra_cli_args
+                        enable_subtitle_sharing, public_host, public_port, extra_cli_args
                     ],
                     outputs=output_box,
                     concurrency_limit=1,

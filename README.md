@@ -85,6 +85,57 @@ Finally, the results can be printed to the terminal, saved to a file, or sent to
 
 ## Installation
 
+### uv Local Deployment
+
+For a source checkout, you can use `uv` with Python 3.12.
+
+Optional: source the local environment script first to keep virtualenvs, caches, downloaded models, and temporary files inside this project directory (`.venv`, `.cache`, `.local`, `.tmp`).
+
+```bash
+source scripts/use-local-env.sh
+```
+
+Command line only:
+
+```bash
+uv python install 3.12
+uv sync
+```
+
+WebUI:
+
+```bash
+uv sync --extra webui
+```
+
+To include Qwen3-ASR:
+
+```bash
+# command line only
+uv sync --extra qwen_asr
+
+# WebUI
+uv sync --extra webui --extra qwen_asr
+```
+
+If you need CUDA, run `uv sync` first, then install or replace PyTorch with a build that matches your GPU/CUDA environment from the [PyTorch installation guide](https://pytorch.org/get-started/locally/). After installing a custom PyTorch build, run the virtualenv entry points directly, or use `uv run --no-sync ...`, so `uv` does not replace it during an exact sync.
+
+Start the command line tool with:
+
+```bash
+stream-translator-gpt
+# or
+uv run --no-sync stream-translator-gpt
+```
+
+Start the WebUI with:
+
+```bash
+stream-translator-gpt-webui
+# or
+uv run --no-sync stream-translator-gpt-webui
+```
+
 ### WebUI
 
 ```
@@ -174,12 +225,18 @@ The commands on Colab [![Open In Colab](https://colab.research.google.com/assets
 
     ```stream-translator-gpt {URL} --language ja --translation_prompt "Translate from Japanese to Chinese" --google_api_key {your_google_key} --hide_transcribe_result --retry_if_translation_fails --output_timestamps --output_file_path ./result.srt```
 
-### WebUI subtitle sharing API
+### Subtitle sharing API
 
 In the WebUI Output tab, enable `Enable Subtitle Sharing` and choose the public subtitle port, default `8765`.
+For command-line runs, add `--enable_subtitle_sharing` to start the same SSE subtitle sharing server from the CLI process:
+
+```bash
+stream-translator-gpt {URL} --language {input_language} --enable_subtitle_sharing --subtitle_share_host 0.0.0.0 --subtitle_share_public_port 8765
+```
+
 External clients can then discover and consume the live subtitle stream with:
 
-1. `GET /api/server/info` on the WebUI server to read `public_port` and `enable_subtitle_sharing`.
+1. `GET /api/server/info` on the WebUI server, or on the CLI subtitle sharing port, to read `public_host`, `public_port`, and `enable_subtitle_sharing`.
 2. `GET /api/translation/active-task` on the public subtitle port to read the current `task_id`.
 3. `GET /api/translation/stream/{task_id}` on the public subtitle port to receive `text/event-stream` events.
 
@@ -258,6 +315,9 @@ The SSE stream emits `subtitle`, `status`, heartbeat comments, and `error` event
 | `--telegram_token`                      |                                | Token of Telegram bot.                                                                                                                                                                                             |
 | `--telegram_chat_id`                    |                                | If set, will send the result text to this Telegram chat. Needs to be used with \"--telegram_token\".                                                                                                               |
 | `--output_proxy`                        |                                | Use the specified HTTP/HTTPS/SOCKS proxy for Cqhttp/Discord/Telegram, e.g. http://127.0.0.1:7890.                                                                                                                  |
+| `--enable_subtitle_sharing`             |                                | Start a public SSE subtitle sharing server from the CLI process.                                                                                                                                                    |
+| `--subtitle_share_host`                 | 0.0.0.0                        | Host/IP to bind the subtitle sharing server. Use 0.0.0.0 to listen on all interfaces.                                                                                                                               |
+| `--subtitle_share_public_port`          | 8765                           | Public subtitle sharing port used with `--enable_subtitle_sharing`.                                                                                                                                                 |
 
 ## Contact me
 
