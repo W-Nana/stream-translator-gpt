@@ -1,5 +1,6 @@
 import os
 import io
+import logging
 import queue
 import re
 from abc import abstractmethod
@@ -265,3 +266,217 @@ class HFTranscriber(AudioTranscriber):
             generate_kwargs=generate_kwargs,
         )
         return result['text'], None
+
+
+def _load_qwen3_asr_model_class():
+    import sys
+    import types
+
+    # qwen_asr imports the forced aligner eagerly, but plain ASR does not need it.
+    # Avoid importing nagisa/dynet here because some older CPUs hit SIGILL in dynet wheels.
+    module_name = 'qwen_asr.inference.qwen3_forced_aligner'
+    if module_name not in sys.modules:
+        forced_aligner_stub = types.ModuleType(module_name)
+
+        class Qwen3ForcedAligner:
+
+            @classmethod
+            def from_pretrained(cls, *args, **kwargs):
+                raise RuntimeError('Qwen3 forced alignment is not available in this transcription backend.')
+
+        forced_aligner_stub.Qwen3ForcedAligner = Qwen3ForcedAligner
+        sys.modules[module_name] = forced_aligner_stub
+
+    from qwen_asr import Qwen3ASRModel
+
+    return Qwen3ASRModel
+
+
+class _TransformersPadTokenLogFilter(logging.Filter):
+
+    def filter(self, record):
+        return 'Setting `pad_token_id` to `eos_token_id`' not in record.getMessage()
+
+
+def _install_transformers_pad_token_log_filter():
+    logger = logging.getLogger('transformers.generation.utils')
+    if any(isinstance(filter_, _TransformersPadTokenLogFilter) for filter_ in logger.filters):
+        return
+    logger.addFilter(_TransformersPadTokenLogFilter())
+
+
+class Qwen3ASRTranscriber(AudioTranscriber):
+    LANGUAGE_NAMES = {
+        'ar': 'Arabic',
+        'cs': 'Czech',
+        'da': 'Danish',
+        'de': 'German',
+        'el': 'Greek',
+        'en': 'English',
+        'es': 'Spanish',
+        'fa': 'Persian',
+        'fi': 'Finnish',
+        'fil': 'Filipino',
+        'fr': 'French',
+        'hi': 'Hindi',
+        'hu': 'Hungarian',
+        'id': 'Indonesian',
+        'it': 'Italian',
+        'ja': 'Japanese',
+        'ko': 'Korean',
+        'mk': 'Macedonian',
+        'ms': 'Malay',
+        'nl': 'Dutch',
+        'pl': 'Polish',
+        'pt': 'Portuguese',
+        'ro': 'Romanian',
+        'ru': 'Russian',
+        'sv': 'Swedish',
+        'th': 'Thai',
+        'tl': 'Filipino',
+        'tr': 'Turkish',
+        'vi': 'Vietnamese',
+        'yue': 'Cantonese',
+        'zh': 'Chinese',
+        'zh-cn': 'Chinese',
+        'zh-hans': 'Chinese',
+        'zh-hant': 'Chinese',
+        'zh-tw': 'Chinese',
+    }
+    SUPPORTED_LANGUAGE_NAMES = set(LANGUAGE_NAMES.values())
+
+    def __init__(self, model: str, language: str, proxy: str, dtype: str, device_map: str, max_new_tokens: int,
+                 **kwargs) -> None:
+        super().__init__(**kwargs)
+        try:
+            import torch
+            Qwen3ASRModel = _load_qwen3_asr_model_class()
+        except ImportError as e:
+            raise ImportError(
+                'Qwen3-ASR support requires the qwen_asr extra. Install it with: '
+                'pip install "stream-translator-gpt[qwen_asr]"'
+            ) from e
+
+        if proxy:
+            _apply_hf_proxy(proxy)
+
+        self._validate_device_map(torch, device_map)
+
+        dtype_obj = torch.bfloat16
+        if dtype:
+            dtype_obj = getattr(torch, dtype, None)
+            if not isinstance(dtype_obj, torch.dtype):
+                raise ValueError(f'Unsupported Qwen3-ASR dtype: {dtype}')
+
+        print(f'{INFO}Loading Qwen3-ASR model: {model}')
+        self.model = Qwen3ASRModel.from_pretrained(model,
+                                                   dtype=dtype_obj,
+                                                   device_map=device_map,
+                                                   max_new_tokens=max_new_tokens)
+        self._set_generation_pad_token_id()
+        _install_transformers_pad_token_log_filter()
+        self.language = self._normalize_language(language)
+
+    @classmethod
+    def _normalize_language(cls, language: str | None) -> str | None:
+        if language is None:
+            return None
+        language = str(language).strip()
+        if not language or language.lower() == 'auto':
+            return None
+
+        language_key = language.lower().replace('_', '-')
+        if language_key in cls.LANGUAGE_NAMES:
+            return cls.LANGUAGE_NAMES[language_key]
+
+        language_name = language[:1].upper() + language[1:].lower()
+        if language_name in cls.SUPPORTED_LANGUAGE_NAMES:
+            return language_name
+
+        supported = ', '.join(sorted(cls.LANGUAGE_NAMES.keys()))
+        raise ValueError(
+            f'Qwen3-ASR does not support language "{language}". '
+            f'Use "auto" or one of these language codes: {supported}.')
+
+    @classmethod
+    def _validate_device_map(cls, torch, device_map: str | None) -> None:
+        device_map = str(device_map or 'auto').strip() or 'auto'
+        if device_map == 'cpu':
+            return
+        if device_map == 'auto':
+            if not torch.cuda.is_available() or cls._cuda_has_supported_device(torch):
+                return
+            raise RuntimeError(
+                'Current PyTorch CUDA build does not support the available GPU(s) for Qwen3-ASR. '
+                'Install a PyTorch build that supports your GPU compute capability, or explicitly use '
+                '--qwen3_asr_device_map cpu.')
+        if device_map.startswith('cuda'):
+            if cls._cuda_has_supported_device(torch):
+                return
+            raise RuntimeError(
+                'Current PyTorch CUDA build does not support the available GPU(s) for Qwen3-ASR. '
+                'Install a PyTorch build that supports your GPU compute capability, or explicitly use '
+                '--qwen3_asr_device_map cpu.')
+
+    @staticmethod
+    def _cuda_has_supported_device(torch) -> bool:
+        if not torch.cuda.is_available():
+            return False
+        supported_caps = []
+        for arch in torch.cuda.get_arch_list():
+            match = re.fullmatch(r'sm_(\d)(\d+)', arch)
+            if match:
+                supported_caps.append((int(match.group(1)), int(match.group(2))))
+        if not supported_caps:
+            return True
+        min_cap = min(supported_caps)
+        for index in range(torch.cuda.device_count()):
+            if torch.cuda.get_device_capability(index) >= min_cap:
+                return True
+        return False
+
+    def _set_generation_pad_token_id(self) -> None:
+        hf_model = getattr(self.model, 'model', None)
+        generation_config = getattr(hf_model, 'generation_config', None)
+        model_config = getattr(hf_model, 'config', None)
+        pad_token_id = getattr(generation_config, 'pad_token_id', None)
+        if pad_token_id is None:
+            pad_token_id = getattr(model_config, 'pad_token_id', None)
+        if pad_token_id is None:
+            pad_token_id = getattr(generation_config, 'eos_token_id', None)
+            if pad_token_id is None:
+                pad_token_id = getattr(model_config, 'eos_token_id', None)
+            if isinstance(pad_token_id, (list, tuple)):
+                pad_token_id = pad_token_id[0] if pad_token_id else None
+            if pad_token_id is None:
+                return
+
+        if generation_config is not None:
+            generation_config.pad_token_id = pad_token_id
+        if model_config is not None:
+            model_config.pad_token_id = pad_token_id
+        self._wrap_generate_with_pad_token_id(hf_model, pad_token_id)
+
+    @staticmethod
+    def _wrap_generate_with_pad_token_id(hf_model, pad_token_id) -> None:
+        if hf_model is None or getattr(hf_model, '_stream_translator_pad_token_wrapped', False):
+            return
+        original_generate = getattr(hf_model, 'generate', None)
+        if original_generate is None:
+            return
+
+        def generate_with_pad_token_id(*args, **kwargs):
+            kwargs.setdefault('pad_token_id', pad_token_id)
+            return original_generate(*args, **kwargs)
+
+        hf_model.generate = generate_with_pad_token_id
+        hf_model._stream_translator_pad_token_wrapped = True
+
+    def transcribe(self, audio: np.array, initial_prompt: str = None) -> tuple[str, list | None]:
+        results = self.model.transcribe(audio=(audio, SAMPLE_RATE), context=initial_prompt or '', language=self.language)
+        result = results[0] if results else None
+        if result is None:
+            return '', None
+        if isinstance(result, dict):
+            return result.get('text', ''), None
+        return getattr(result, 'text', ''), None

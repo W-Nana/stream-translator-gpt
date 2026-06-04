@@ -16,7 +16,8 @@ if __name__ == '__main__':
 from .common import ClientPool, start_daemon_thread, is_url, WARNING, ERROR, INFO
 from .audio_getter import StreamAudioGetter, LocalFileAudioGetter, DeviceAudioGetter
 from .audio_slicer import AudioSlicer
-from .audio_transcriber import OpenaiWhisper, FasterWhisper, SimulStreaming, RemoteOpenaiTranscriber, HFTranscriber
+from .audio_transcriber import (OpenaiWhisper, FasterWhisper, SimulStreaming, RemoteOpenaiTranscriber, HFTranscriber,
+                                Qwen3ASRTranscriber)
 from .llm_translator import GPTTranslator, GeminiTranslator
 from .result_exporter import ResultExporter
 from . import __version__
@@ -26,7 +27,8 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
          device_index, device_recording_interval, mic, min_audio_length, max_audio_length, target_audio_length,
          continuous_no_speech_threshold, disable_dynamic_no_speech_threshold, prefix_retention_length, vad_threshold,
          disable_dynamic_vad_threshold, model, language, use_faster_whisper, use_simul_streaming, use_hf_asr,
-         use_openai_transcription_api, openai_transcription_model, transcription_filters, disable_transcription_context,
+         use_qwen3_asr, use_openai_transcription_api, openai_transcription_model, qwen3_asr_model, qwen3_asr_dtype,
+         qwen3_asr_device_map, qwen3_asr_max_new_tokens, transcription_filters, disable_transcription_context,
          transcription_initial_prompt, gpt_model, gemini_model, translation_prompt, translation_history_size,
          translation_timeout, use_json_result, retry_if_translation_fails, temperature, top_p, top_k, prompt_cache_key,
          reasoning_effort, verbosity, service_tier, debug_mode, processing_proxy, output_timestamps,
@@ -102,6 +104,14 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
                                                **common_args)
             elif use_hf_asr:
                 return HFTranscriber(model=model, language=language, proxy=processing_proxy, **common_args)
+            elif use_qwen3_asr:
+                return Qwen3ASRTranscriber(model=qwen3_asr_model,
+                                           language=language,
+                                           proxy=processing_proxy,
+                                           dtype=qwen3_asr_dtype,
+                                           device_map=qwen3_asr_device_map,
+                                           max_new_tokens=qwen3_asr_max_new_tokens,
+                                           **common_args)
             else:
                 return OpenaiWhisper(model=model, language=language, **common_args)
 
@@ -337,6 +347,23 @@ def cli():
         '--use_hf_asr',
         action='store_true',
         help='Set this flag to use a HuggingFace ASR model (via transformers pipeline) specified by --model.')
+    parser.add_argument('--use_qwen3_asr', action='store_true', help='Set this flag to use Qwen3-ASR.')
+    parser.add_argument('--qwen3_asr_model',
+                        type=str,
+                        default='Qwen/Qwen3-ASR-0.6B',
+                        help='Qwen3-ASR model name, e.g. Qwen/Qwen3-ASR-0.6B or Qwen/Qwen3-ASR-1.7B.')
+    parser.add_argument('--qwen3_asr_dtype',
+                        type=str,
+                        default='bfloat16',
+                        help='Torch dtype used when loading Qwen3-ASR, e.g. bfloat16, float16, float32.')
+    parser.add_argument('--qwen3_asr_device_map',
+                        type=str,
+                        default='auto',
+                        help='Device map used when loading Qwen3-ASR, e.g. auto, cuda:0, cpu.')
+    parser.add_argument('--qwen3_asr_max_new_tokens',
+                        type=int,
+                        default=512,
+                        help='Maximum number of generated tokens for Qwen3-ASR.')
     parser.add_argument(
         '--transcription_filters',
         type=str,
@@ -566,11 +593,14 @@ def cli():
     if args['use_hf_asr']:
         transcription_encoder_flag_num += 1
         transcription_decoder_flag_num += 1
+    if args['use_qwen3_asr']:
+        transcription_encoder_flag_num += 1
+        transcription_decoder_flag_num += 1
     if transcription_encoder_flag_num > 1:
-        print(f'{ERROR}Cannot use Faster Whisper, OpenAI Transcription API or HuggingFace ASR at the same time')
+        print(f'{ERROR}Cannot use multiple transcription encoder backends at the same time')
         sys.exit(1)
     if transcription_decoder_flag_num > 1:
-        print(f'{ERROR}Cannot use Simul Streaming, OpenAI Transcription API or HuggingFace ASR at the same time')
+        print(f'{ERROR}Cannot use multiple transcription decoder backends at the same time')
         sys.exit(1)
 
     if args['use_openai_transcription_api'] and not args['openai_api_key']:

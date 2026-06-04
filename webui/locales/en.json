@@ -97,5 +97,9 @@
     "extra_cli_args": "Extra Arguments",
     "extra_cli_args_ph": "CLI arguments not available in the UI. They will be appended to the command as-is.",
     "hf_model_name": "Model Name",
+    "qwen3_asr_model": "Qwen3-ASR Model",
+    "qwen3_asr_dtype": "Qwen3-ASR Dtype",
+    "qwen3_asr_device_map": "Qwen3-ASR Device Map",
+    "qwen3_asr_max_new_tokens": "Qwen3-ASR Max Tokens",
     "hf_model_name_ph": "e.g. openai/whisper-large-v3-turbo"
 }

@@ -97,5 +97,9 @@
     "extra_cli_args": "额外参数",
     "extra_cli_args_ph": "WebUI 中没有的 CLI 参数，将原样追加到命令中。",
     "hf_model_name": "模型名称",
+    "qwen3_asr_model": "Qwen3-ASR 模型",
+    "qwen3_asr_dtype": "Qwen3-ASR 数据类型",
+    "qwen3_asr_device_map": "Qwen3-ASR 设备映射",
+    "qwen3_asr_max_new_tokens": "Qwen3-ASR 最大 Token 数",
     "hf_model_name_ph": "例：openai/whisper-large-v3-turbo"
 }

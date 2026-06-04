@@ -37,7 +37,6 @@ export HF_HOME="${PROJECT_ROOT}/.cache/huggingface"
 export HF_HUB_CACHE="${PROJECT_ROOT}/.cache/huggingface/hub"
 export HUGGINGFACE_HUB_CACHE="${PROJECT_ROOT}/.cache/huggingface/hub"
 export HF_DATASETS_CACHE="${PROJECT_ROOT}/.cache/huggingface/datasets"
-export TRANSFORMERS_CACHE="${PROJECT_ROOT}/.cache/huggingface/transformers"
 
 export TORCH_HOME="${PROJECT_ROOT}/.cache/torch"
 export TORCH_EXTENSIONS_DIR="${PROJECT_ROOT}/.cache/torch/extensions"
@@ -62,7 +61,6 @@ mkdir -p \
     "${HF_HOME}" \
     "${HF_HUB_CACHE}" \
     "${HF_DATASETS_CACHE}" \
-    "${TRANSFORMERS_CACHE}" \
     "${TORCH_HOME}" \
     "${TORCH_EXTENSIONS_DIR}" \
     "${WHISPER_CACHE_DIR}" \

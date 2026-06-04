@@ -97,5 +97,9 @@
     "extra_cli_args": "追加引数",
     "extra_cli_args_ph": "UI にない CLI 引数。コマンドにそのまま追加されます。",
     "hf_model_name": "モデル名",
+    "qwen3_asr_model": "Qwen3-ASR モデル",
+    "qwen3_asr_dtype": "Qwen3-ASR データ型",
+    "qwen3_asr_device_map": "Qwen3-ASR デバイスマップ",
+    "qwen3_asr_max_new_tokens": "Qwen3-ASR 最大トークン",
     "hf_model_name_ph": "例：openai/whisper-large-v3-turbo"
 }

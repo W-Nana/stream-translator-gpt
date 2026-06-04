@@ -127,6 +127,13 @@ Colab上的命令 [![Open In Colab](https://colab.research.google.com/assets/col
 
     仅支持在 Hugging Face Hub 上 `pipeline_tag` 为 `automatic-speech-recognition` 的模型。
 
+- 使用 **Qwen3-ASR** 进行转录（需要先执行 `pip install stream-translator-gpt[qwen_asr]`）：
+
+    ```stream-translator-gpt {网址} --language {输入语言} --use_qwen3_asr --qwen3_asr_model Qwen/Qwen3-ASR-0.6B```
+
+    使用 `--language auto` 可让 Qwen3-ASR 自动识别源语言。Qwen3-ASR 支持上游项目列出的 30 种语言（例如 `zh`、`en`、`ja`、`yue`、`fil`）。
+    默认的 `--qwen3_asr_device_map auto` 需要当前 PyTorch 支持所选 CUDA 显卡；否则请安装兼容的 PyTorch，或显式选择其他 device map。
+
 - 使用 **Gemini** 翻译成其他语言:
 
     ```stream-translator-gpt {网址} --language ja --translation_prompt "翻译以下日语为中文，只输出译文，不要输出原文，在一行内输出" --google_api_key {您的 Google 密钥}```
@@ -213,6 +220,11 @@ SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数
 | `--use_simul_streaming`                 |                                | 设置此标志以使用 SimulStreaming 进行语音转文字，而不是原始的 OpenAI Whisper。如果与 --use_faster_whisper 一起使用，将使用以 Faster-Whisper 作为编码器的 SimulStreaming。  |
 | `--use_openai_transcription_api`        |                                | 设置此标志以使用 OpenAI transcription API，而不是原始的本地 Whisper。                                                                                                     |
 | `--use_hf_asr`                          |                                | 设置此标志以使用 HuggingFace ASR 模型。通过 `--model` 指定模型 ID。需要先执行 `pip install stream-translator-gpt[hf_asr]`。                                               |
+| `--use_qwen3_asr`                       |                                | 设置此标志以使用 Qwen3-ASR。需要先执行 `pip install stream-translator-gpt[qwen_asr]`。                                                                                     |
+| `--qwen3_asr_model`                     | Qwen/Qwen3-ASR-0.6B            | Qwen3-ASR 模型名称，例如 Qwen/Qwen3-ASR-0.6B 或 Qwen/Qwen3-ASR-1.7B。                                                                                                      |
+| `--qwen3_asr_dtype`                     | bfloat16                       | 加载 Qwen3-ASR 时使用的 Torch dtype，例如 bfloat16、float16、float32。                                                                                                     |
+| `--qwen3_asr_device_map`                | auto                           | 加载 Qwen3-ASR 时使用的 device map，例如 auto、cuda:0、cpu。所选 CUDA 设备必须被当前 PyTorch build 支持。                                                                 |
+| `--qwen3_asr_max_new_tokens`            | 512                            | Qwen3-ASR 生成 token 上限。                                                                                                                                               |
 | `--transcription_filters`               | emoji_filter,repetition_filter | 应用于语音转文字结果的过滤器，用 "," 分隔。我们提供 emoji_filter、repetition_filter 和 japanese_stream_filter。                                                           |
 | `--transcription_initial_prompt`        |                                | 通用的转录固定提示词/术语表。格式："提示词1, 提示词2, ..."。此文本将始终包含在传递给模型的提示词中。                                                                      |
 | `--disable_transcription_context`       |                                | 设置此标志以禁用转录中的上下文（上一句）传递。                                                                                                                            |

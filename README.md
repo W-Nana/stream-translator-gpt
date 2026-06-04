@@ -127,6 +127,13 @@ The commands on Colab [![Open In Colab](https://colab.research.google.com/assets
 
     Only models with `pipeline_tag: automatic-speech-recognition` on Hugging Face Hub are supported.
 
+- Transcribe by **Qwen3-ASR** (requires `pip install stream-translator-gpt[qwen_asr]`):
+
+    ```stream-translator-gpt {URL} --language {input_language} --use_qwen3_asr --qwen3_asr_model Qwen/Qwen3-ASR-0.6B```
+
+    Use `--language auto` to let Qwen3-ASR detect the source language. Qwen3-ASR supports the 30 languages listed by the upstream project (for example `zh`, `en`, `ja`, `yue`, `fil`).
+    The default `--qwen3_asr_device_map auto` requires a CUDA GPU supported by the installed PyTorch build; otherwise install a compatible PyTorch build or explicitly choose another device map.
+
 - Translate to other language by **Gemini**:
 
     ```stream-translator-gpt {URL} --language ja --translation_prompt "Translate from Japanese to Chinese" --google_api_key {your_google_key}```
@@ -213,6 +220,11 @@ The SSE stream emits `subtitle`, `status`, heartbeat comments, and `error` event
 | `--use_simul_streaming`                 |                                | Set this flag to use SimulStreaming instead of Whisper. If used with --use_faster_whisper, SimulStreaming with Faster-Whisper as the encoder will be used.                                                         |
 | `--use_openai_transcription_api`        |                                | Set this flag to use OpenAI transcription API instead of the original local Whipser.                                                                                                                               |
 | `--use_hf_asr`                          |                                | Set this flag to use a HuggingFace ASR model. Use `--model` to specify the model ID. Requires `pip install stream-translator-gpt[hf_asr]`.                                                                         |
+| `--use_qwen3_asr`                       |                                | Set this flag to use Qwen3-ASR. Requires `pip install stream-translator-gpt[qwen_asr]`.                                                                                                                            |
+| `--qwen3_asr_model`                     | Qwen/Qwen3-ASR-0.6B            | Qwen3-ASR model name, e.g. Qwen/Qwen3-ASR-0.6B or Qwen/Qwen3-ASR-1.7B.                                                                                                                                             |
+| `--qwen3_asr_dtype`                     | bfloat16                       | Torch dtype used when loading Qwen3-ASR, e.g. bfloat16, float16, float32.                                                                                                                                          |
+| `--qwen3_asr_device_map`                | auto                           | Device map used when loading Qwen3-ASR, e.g. auto, cuda:0, cpu. The selected CUDA device must be supported by the installed PyTorch build.                                                                         |
+| `--qwen3_asr_max_new_tokens`            | 512                            | Maximum number of generated tokens for Qwen3-ASR.                                                                                                                                                                  |
 | `--transcription_filters`               | emoji_filter,repetition_filter | Filters apply to transcription results, separated by ",". We provide emoji_filter, repetition_filter and japanese_stream_filter.                                                                                   |
 | `--transcription_initial_prompt`        |                                | General purpose prompt/glossary for transcription. Format: "Word1, Word2, Word3, ...". This text is always included in the prompt passed to the model.                                                             |
 | `--disable_transcription_context`       |                                | Set this flag to disable context (previous sentence) propagation in transcription.                                                                                                                                 |

@@ -84,9 +84,10 @@ os.makedirs(USER_PRESETS_DIR, exist_ok=True)
 INPUT_KEYS = [
     "input_type", "input_url", "device_rec_interval", "audio_source", "input_file", "input_format", "input_cookies",
     "input_proxy", "openai_key", "google_key", "openai_base_url", "google_base_url", "overall_proxy", "model_size",
-    "hf_model_name", "language", "whisper_backend", "openai_transcription_model", "vad_threshold", "min_audio_len",
-    "max_audio_len", "target_audio_len", "silence_threshold", "disable_dynamic_vad", "disable_dynamic_silence",
-    "prefix_retention_len", "filter_emoji", "filter_repetition", "filter_japanese_stream",
+    "hf_model_name", "qwen3_asr_model", "qwen3_asr_dtype", "qwen3_asr_device_map",
+    "qwen3_asr_max_new_tokens", "language", "whisper_backend", "openai_transcription_model", "vad_threshold",
+    "min_audio_len", "max_audio_len", "target_audio_len", "silence_threshold", "disable_dynamic_vad",
+    "disable_dynamic_silence", "prefix_retention_len", "filter_emoji", "filter_repetition", "filter_japanese_stream",
     "disable_transcription_context", "transcription_initial_prompt", "translation_prompt", "translation_provider",
     "gpt_model", "gemini_model", "history_size", "translation_timeout", "processing_proxy", "use_json_result",
     "retry_if_translation_fails", "show_timestamps", "hide_transcription", "output_file", "output_proxy", "cqhttp_url",
@@ -317,6 +318,10 @@ def build_translator_command(
         whisper_backend,
         openai_transcription_model,
         hf_model_name,
+        qwen3_asr_model,
+        qwen3_asr_dtype,
+        qwen3_asr_device_map,
+        qwen3_asr_max_new_tokens,
         vad_threshold,
         min_audio_len,
         max_audio_len,
@@ -442,12 +447,19 @@ def build_translator_command(
         cmd.append("--use_simul_streaming")
     elif whisper_backend == "HuggingFace ASR":
         cmd.append("--use_hf_asr")
+    elif whisper_backend == "Qwen3-ASR":
+        cmd.append("--use_qwen3_asr")
     elif whisper_backend == "OpenAI Transcription API":
         cmd.append("--use_openai_transcription_api")
         add_arg("--openai_transcription_model", openai_transcription_model, "openai_transcription_model")
 
     if whisper_backend == "HuggingFace ASR":
         add_arg("--model", hf_model_name)
+    elif whisper_backend == "Qwen3-ASR":
+        add_arg("--qwen3_asr_model", qwen3_asr_model, "qwen3_asr_model")
+        add_arg("--qwen3_asr_dtype", qwen3_asr_dtype, "qwen3_asr_dtype")
+        add_arg("--qwen3_asr_device_map", qwen3_asr_device_map, "qwen3_asr_device_map")
+        add_arg("--qwen3_asr_max_new_tokens", qwen3_asr_max_new_tokens, "qwen3_asr_max_new_tokens")
     else:
         add_arg("--model", model_size, "model_size")
     add_arg("--language", language, "language")
@@ -571,6 +583,10 @@ def run_translator(
         whisper_backend,
         openai_transcription_model,
         hf_model_name,
+        qwen3_asr_model,
+        qwen3_asr_dtype,
+        qwen3_asr_device_map,
+        qwen3_asr_max_new_tokens,
         vad_threshold,
         min_audio_len,
         max_audio_len,
@@ -660,6 +676,10 @@ def run_translator(
                                           whisper_backend=whisper_backend,
                                           openai_transcription_model=openai_transcription_model,
                                           hf_model_name=hf_model_name,
+                                          qwen3_asr_model=qwen3_asr_model,
+                                          qwen3_asr_dtype=qwen3_asr_dtype,
+                                          qwen3_asr_device_map=qwen3_asr_device_map,
+                                          qwen3_asr_max_new_tokens=qwen3_asr_max_new_tokens,
                                           vad_threshold=vad_threshold,
                                           min_audio_len=min_audio_len,
                                           max_audio_len=max_audio_len,
@@ -858,6 +878,7 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                 ("Whisper", "Whisper"), ("Faster-Whisper", "Faster-Whisper"), ("Simul-Streaming", "Simul-Streaming"),
                 ("Faster-Whisper & Simul-Streaming", "Faster-Whisper & Simul-Streaming"),
                 ("HuggingFace ASR", "HuggingFace ASR"),
+                ("Qwen3-ASR", "Qwen3-ASR"),
                 (i18n.get("openai_transcription_api_option"), "OpenAI Transcription API")
             ],
                                        label=i18n.get("transcription_type"),
@@ -886,20 +907,40 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                                            placeholder=i18n.get("hf_model_name_ph"),
                                            visible=False,
                                            value=get_default("hf_model_name"))
+                qwen3_asr_model = gr.Dropdown(["Qwen/Qwen3-ASR-0.6B", "Qwen/Qwen3-ASR-1.7B"],
+                                              label=i18n.get("qwen3_asr_model"),
+                                              value=get_default("qwen3_asr_model"),
+                                              visible=False,
+                                              allow_custom_value=True)
                 language = gr.Dropdown(
                     [
                         "auto", "af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br", "bs", "ca", "cs",
                         "cy", "da", "de", "el", "en", "es", "et", "eu", "fa", "fi", "fo", "fr", "gl", "gu", "ha", "haw",
                         "he", "hi", "hr", "ht", "hu", "hy", "id", "is", "it", "ja", "jw", "ka", "kk", "km", "kn", "ko",
-                        "la", "lb", "ln", "lo", "lt", "lv", "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my", "ne",
+                        "la", "lb", "ln", "lo", "lt", "lv", "fil", "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my", "ne",
                         "nl", "nn", "no", "oc", "pa", "pl", "ps", "pt", "ro", "ru", "sa", "sd", "si", "sk", "sl", "sn",
                         "so", "sq", "sr", "su", "sv", "sw", "ta", "te", "tg", "th", "tk", "tl", "tr", "tt", "uk", "ur",
-                        "uz", "vi", "yi", "yo", "zh"
+                        "uz", "vi", "yi", "yo", "yue", "zh"
                     ],
                     label=i18n.get("language"),
                     value=get_default("language"),
                     allow_custom_value=True,
                     info="[Available Languages](https://github.com/openai/whisper#available-models-and-languages)")
+            with gr.Row():
+                qwen3_asr_dtype = gr.Dropdown(["bfloat16", "float16", "float32"],
+                                             label=i18n.get("qwen3_asr_dtype"),
+                                             value=get_default("qwen3_asr_dtype"),
+                                             visible=False,
+                                             allow_custom_value=True)
+                qwen3_asr_device_map = gr.Dropdown(["auto", "cuda:0", "cuda:1", "cpu"],
+                                                   label=i18n.get("qwen3_asr_device_map"),
+                                                   value=get_default("qwen3_asr_device_map"),
+                                                   visible=False,
+                                                   allow_custom_value=True)
+                qwen3_asr_max_new_tokens = gr.Number(value=get_default("qwen3_asr_max_new_tokens"),
+                                                     label=i18n.get("qwen3_asr_max_new_tokens"),
+                                                     visible=False,
+                                                     precision=0)
             transcription_initial_prompt = gr.Textbox(label=i18n.get("transcription_initial_prompt"),
                                                       value=get_default("transcription_initial_prompt"),
                                                       placeholder=i18n.get("transcription_initial_prompt_ph"))
@@ -1062,15 +1103,21 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
     def update_backend_visibility(choice):
         openai_visible = (choice == "OpenAI Transcription API")
         hf_visible = (choice == "HuggingFace ASR")
+        qwen_visible = (choice == "Qwen3-ASR")
         return {
             openai_transcription_model: gr.update(visible=openai_visible),
-            model_size: gr.update(visible=not openai_visible and not hf_visible),
+            model_size: gr.update(visible=not openai_visible and not hf_visible and not qwen_visible),
             openai_transcription_group: gr.update(visible=openai_visible),
             hf_model_name: gr.update(visible=hf_visible),
+            qwen3_asr_model: gr.update(visible=qwen_visible),
+            qwen3_asr_dtype: gr.update(visible=qwen_visible),
+            qwen3_asr_device_map: gr.update(visible=qwen_visible),
+            qwen3_asr_max_new_tokens: gr.update(visible=qwen_visible),
         }
 
     whisper_backend.change(update_backend_visibility, whisper_backend,
-                           [openai_transcription_model, model_size, openai_transcription_group, hf_model_name])
+                           [openai_transcription_model, model_size, openai_transcription_group, hf_model_name,
+                            qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens])
 
     # Translation Visibility
     def update_translation_visibility(choice):
@@ -1127,8 +1174,9 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                     inputs=[
                         input_type, input_url, device_rec_interval, audio_source, input_file, input_format,
                         input_cookies, input_proxy, openai_key, google_key, overall_proxy, model_size, language,
-                        whisper_backend, openai_transcription_model, hf_model_name, vad_threshold, min_audio_len,
-                        max_audio_len, target_audio_len, silence_threshold, disable_dynamic_vad,
+                        whisper_backend, openai_transcription_model, hf_model_name, qwen3_asr_model, qwen3_asr_dtype,
+                        qwen3_asr_device_map, qwen3_asr_max_new_tokens, vad_threshold, min_audio_len, max_audio_len,
+                        target_audio_len, silence_threshold, disable_dynamic_vad,
                         disable_dynamic_silence, prefix_retention_len, filter_emoji, filter_repetition,
                         filter_japanese_stream, disable_transcription_context, transcription_initial_prompt,
                         translation_prompt, translation_provider, gpt_model, gemini_model, history_size,
