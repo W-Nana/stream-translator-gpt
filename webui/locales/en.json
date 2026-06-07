@@ -105,5 +105,8 @@
     "qwen3_asr_quantization": "Qwen3-ASR Quantization",
     "qwen3_asr_bnb_4bit_quant_type": "Qwen3-ASR 4-bit Type",
     "qwen3_asr_bnb_4bit_use_double_quant": "Qwen3-ASR Double Quant",
+    "nemo_asr_model": "NeMo ASR Model",
+    "nemo_asr_device": "NeMo ASR Device",
+    "nemo_asr_decoding": "NeMo ASR Decoding",
     "hf_model_name_ph": "e.g. openai/whisper-large-v3-turbo"
 }

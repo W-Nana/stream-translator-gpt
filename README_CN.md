@@ -40,6 +40,8 @@ flowchart LR
         cc("`**Simul Streaming**`")
         cd("`**OpenAI Transcription API**`")
         ce("`**HuggingFace ASR**`")
+        cf("`**Qwen3-ASR**`")
+        cg("`**NeMo ASR**`")
     end
     subgraph gd["`**翻译**`"]
         direction LR
@@ -65,7 +67,7 @@ flowchart LR
 
 基于 [**Silero-VAD**](https://github.com/snakers4/silero-vad) 的动态阈值音频切片。
 
-在本地使用 [**Whisper**](https://github.com/openai/whisper) / [**Faster-Whisper**](https://github.com/SYSTRAN/faster-whisper) / [**Simul Streaming**](https://github.com/ufal/SimulStreaming) / [**HuggingFace ASR**](https://huggingface.co/models?pipeline_tag=automatic-speech-recognition) 或远程调用 [**OpenAI Transcription API**](https://platform.openai.com/docs/guides/speech-to-text) 进行转录。
+在本地使用 [**Whisper**](https://github.com/openai/whisper) / [**Faster-Whisper**](https://github.com/SYSTRAN/faster-whisper) / [**Simul Streaming**](https://github.com/ufal/SimulStreaming) / [**HuggingFace ASR**](https://huggingface.co/models?pipeline_tag=automatic-speech-recognition) / [**Qwen3-ASR**](https://github.com/QwenLM/Qwen3-ASR) / [**NeMo ASR**](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/asr/intro.html) 或远程调用 [**OpenAI Transcription API**](https://platform.openai.com/docs/guides/speech-to-text) 进行转录。
 
 使用 OpenAI 的 [**GPT API**](https://platform.openai.com/docs/overview) / Google 的 [**Gemini API**](https://ai.google.dev/gemini-api/docs) 进行翻译。
 
@@ -118,7 +120,23 @@ uv sync --extra qwen_asr
 uv sync --extra webui --extra qwen_asr
 ```
 
+如需包含用于 Parakeet 的 NVIDIA NeMo ASR：
+
+```bash
+# 只安装命令行
+uv sync --extra nemo_asr
+
+# WebUI
+uv sync --extra webui --extra nemo_asr
+```
+
 如果需要 CUDA，请先运行 `uv sync`，然后根据您的显卡/CUDA 环境，从 [PyTorch 安装指南](https://pytorch.org/get-started/locally/) 安装或替换兼容的 PyTorch build。安装自定义 PyTorch build 后，请直接运行虚拟环境里的入口，或使用 `uv run --no-sync ...`，避免 `uv` 在 exact sync 时替换它。
+
+安装自定义 PyTorch 后，如需再次同步依赖，请使用辅助脚本保留当前 torch/triton/CUDA runtime：
+
+```bash
+scripts/uv-sync-preserve-torch.sh --extra webui --extra nemo_asr
+```
 
 启动命令行工具：
 
@@ -184,6 +202,13 @@ Colab上的命令 [![Open In Colab](https://colab.research.google.com/assets/col
 
     使用 `--language auto` 可让 Qwen3-ASR 自动识别源语言。Qwen3-ASR 支持上游项目列出的 30 种语言（例如 `zh`、`en`、`ja`、`yue`、`fil`）。
     默认的 `--qwen3_asr_device_map auto` 需要当前 PyTorch 支持所选 CUDA 显卡；否则请安装兼容的 PyTorch，或显式选择其他 device map。
+
+- 使用 **NVIDIA Parakeet / NeMo ASR** 转录日语（需要先执行 `pip install stream-translator-gpt[nemo_asr]`）：
+
+    ```stream-translator-gpt {网址} --language ja --use_nemo_asr --nemo_asr_model nvidia/parakeet-tdt_ctc-0.6b-ja```
+
+    Parakeet 是基于 NeMo 的日语 ASR 模型，不是 Transformers pipeline 模型。请使用 `--use_nemo_asr`，不要使用 `--use_hf_asr`；TDT 解码是默认模式，也可以用 `--nemo_asr_decoding ctc` 作为 fallback/debug 模式。
+    当 `--nemo_asr_device` 是 CUDA 设备时，checkpoint 会先在 CPU 上还原，再移动到 CUDA，以降低模型加载阶段的临时显存峰值。推理仍会在所选 CUDA 设备上运行。
 
 - 使用 **Gemini** 翻译成其他语言:
 
@@ -285,6 +310,10 @@ SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数
 | `--qwen3_asr_quantization`              | none                           | Qwen3-ASR 量化模式：none、bnb_8bit 或 bnb_4bit。需要 `qwen_asr` extra 中的 bitsandbytes。                                                                                  |
 | `--qwen3_asr_bnb_4bit_quant_type`       | nf4                            | Qwen3-ASR BitsAndBytes 4-bit 量化类型：nf4 或 fp4。                                                                                                                       |
 | `--qwen3_asr_bnb_4bit_use_double_quant` |                                | 启用 Qwen3-ASR 4-bit nested/double quantization。                                                                                                                         |
+| `--use_nemo_asr`                        |                                | 设置此标志以使用 NVIDIA NeMo ASR。需要先执行 `pip install stream-translator-gpt[nemo_asr]`。                                                                               |
+| `--nemo_asr_model`                      | nvidia/parakeet-tdt_ctc-0.6b-ja | NeMo ASR 模型名称。默认 Parakeet 模型偏向日语，并使用 NeMo，而不是 Transformers `--use_hf_asr` 后端。                                                                      |
+| `--nemo_asr_device`                     | auto                           | 运行 NeMo ASR 时使用的设备，例如 auto、cuda:0、cuda:1、cpu，或其他 PyTorch 接受的设备字符串。                                                                              |
+| `--nemo_asr_decoding`                   | tdt                            | Hybrid NeMo ASR 模型的解码模式：tdt 或 ctc。TDT 会保留模型默认 decoder，更适合目前这种短切片近实时流程。                                                                  |
 | `--transcription_filters`               | emoji_filter,repetition_filter | 应用于语音转文字结果的过滤器，用 "," 分隔。我们提供 emoji_filter、repetition_filter 和 japanese_stream_filter。                                                           |
 | `--transcription_initial_prompt`        |                                | 通用的转录固定提示词/术语表。格式："提示词1, 提示词2, ..."。此文本将始终包含在传递给模型的提示词中。                                                                      |
 | `--disable_transcription_context`       |                                | 设置此标志以禁用转录中的上下文（上一句）传递。                                                                                                                            |

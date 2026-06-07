@@ -1,15 +1,18 @@
+import contextlib
+import gc
 import os
 import io
 import logging
 import queue
 import re
+import tempfile
 from abc import abstractmethod
 from scipy.io.wavfile import write as write_audio
 
 import numpy as np
 
 from . import filters
-from .common import TranslationTask, SAMPLE_RATE, LoopWorkerBase, sec2str, ClientPool, INFO
+from .common import TranslationTask, SAMPLE_RATE, LoopWorkerBase, sec2str, ClientPool, INFO, WARNING
 from .simul_streaming.simul_whisper.whisper.utils import compression_ratio
 
 
@@ -128,6 +131,13 @@ def _apply_hf_proxy(proxy: str):
         session.verify = False
     except Exception:
         pass
+
+
+def _parse_torch_cuda_arch(arch: str) -> tuple[int, int] | None:
+    match = re.fullmatch(r'sm_(\d+)(\d)', arch)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
 
 
 class FasterWhisper(AudioTranscriber):
@@ -266,6 +276,262 @@ class HFTranscriber(AudioTranscriber):
             generate_kwargs=generate_kwargs,
         )
         return result['text'], None
+
+
+class NemoASRTranscriber(AudioTranscriber):
+
+    def __init__(self, model: str, proxy: str, device: str, decoding: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        try:
+            import torch
+            import nemo.collections.asr as nemo_asr
+        except ImportError as e:
+            raise ImportError(
+                'NeMo ASR support requires the nemo_asr extra. Install it with: '
+                'pip install "stream-translator-gpt[nemo_asr]"'
+            ) from e
+
+        try:
+            from nemo.collections.asr.parts.mixins.transcription import TranscribeConfig
+        except ImportError:
+            TranscribeConfig = None
+        try:
+            from nemo.utils import logging as nemo_logging
+        except ImportError:
+            nemo_logging = None
+
+        self._nemo_logging = nemo_logging
+        self._transcribe_config_cls = TranscribeConfig
+        if proxy:
+            _apply_hf_proxy(proxy)
+
+        self.device = self._normalize_device(torch, device)
+        self._validate_cuda_device_supported(torch, self.device)
+        self._maybe_disable_incompatible_cudnn(torch, self.device)
+
+        print(f'{INFO}Loading NeMo ASR model: {model}')
+        restore_device = self._restore_device(torch, self.device)
+        restore_kwargs = {'model_name': model}
+        if restore_device is not None:
+            restore_kwargs['map_location'] = restore_device
+        if self.device is not None and restore_device is not None and str(restore_device) != str(self.device):
+            print(f'{INFO}Using CPU staged load for NeMo ASR to reduce CUDA memory peak.')
+            self._cleanup_cuda_cache(torch)
+        with self._quiet_nemo_logging():
+            self.model = nemo_asr.models.ASRModel.from_pretrained(**restore_kwargs)
+        if self.device is not None:
+            if restore_device is not None and str(restore_device) != str(self.device):
+                self._cleanup_cuda_cache(torch)
+            self.model.to(self.device)
+            self._cleanup_cuda_cache(torch)
+        if hasattr(self.model, 'eval'):
+            self.model.eval()
+        self.decoding = (decoding or 'tdt').strip().lower()
+        self._configure_decoding(self.decoding)
+        self._cleanup_cuda_cache(torch)
+
+    @staticmethod
+    def _normalize_device(torch, device: str | None):
+        device = str(device or 'auto').strip()
+        if not device or device == 'auto':
+            return None
+        if device.startswith('cuda') and not torch.cuda.is_available():
+            raise RuntimeError('CUDA is not available for NeMo ASR. Use --nemo_asr_device cpu or install CUDA PyTorch.')
+        return torch.device(device)
+
+    @staticmethod
+    def _restore_device(torch, target_device):
+        if target_device is None:
+            return None
+        device_text = str(target_device).strip().lower()
+        if device_text.startswith('cuda'):
+            return torch.device('cpu')
+        return target_device
+
+    @classmethod
+    def _validate_cuda_device_supported(cls, torch, device) -> None:
+        if not getattr(torch, 'cuda', None) or not torch.cuda.is_available():
+            return
+
+        supported_caps = cls._torch_cuda_supported_caps(torch)
+        if not supported_caps:
+            return
+
+        for index in cls._cuda_device_indices(torch, device):
+            try:
+                capability = torch.cuda.get_device_capability(index)
+            except Exception:
+                continue
+            if capability >= min(supported_caps):
+                continue
+
+            device_name_fn = getattr(torch.cuda, 'get_device_name', None)
+            device_name = device_name_fn(index) if callable(device_name_fn) else f'CUDA device {index}'
+            torch_version = getattr(torch, '__version__', 'unknown')
+            torch_cuda = getattr(getattr(torch, 'version', None), 'cuda', 'unknown')
+            supported = ', '.join(f'sm_{major}{minor}' for major, minor in supported_caps)
+            raise RuntimeError(
+                f'Current PyTorch CUDA build does not support {device_name} (sm_{capability[0]}{capability[1]}) '
+                f'for NeMo ASR. Installed torch={torch_version}, CUDA={torch_cuda}, supported architectures: '
+                f'{supported}. Install a PyTorch build that includes sm_{capability[0]}{capability[1]}, then run '
+                f'the existing environment entry point or use "uv run --no-sync" so uv does not replace it.')
+
+    @staticmethod
+    def _torch_cuda_supported_caps(torch) -> list[tuple[int, int]]:
+        supported_caps = []
+        for arch in torch.cuda.get_arch_list():
+            capability = _parse_torch_cuda_arch(arch)
+            if capability is not None:
+                supported_caps.append(capability)
+        return sorted(supported_caps)
+
+    @classmethod
+    def _maybe_disable_incompatible_cudnn(cls, torch, device) -> None:
+        cudnn = getattr(getattr(torch, 'backends', None), 'cudnn', None)
+        if cudnn is None or not getattr(cudnn, 'enabled', False):
+            return
+        if not getattr(torch, 'cuda', None) or not torch.cuda.is_available():
+            return
+
+        incompatible_device = None
+        for index in cls._cuda_device_indices(torch, device):
+            try:
+                capability = torch.cuda.get_device_capability(index)
+            except Exception:
+                continue
+            if capability < (7, 5):
+                incompatible_device = (index, capability)
+                break
+        if incompatible_device is None:
+            return
+
+        version_fn = getattr(cudnn, 'version', None)
+        try:
+            cudnn_version = version_fn() if callable(version_fn) else None
+        except RuntimeError as e:
+            cudnn.enabled = False
+            index, capability = incompatible_device
+            print(
+                f'{WARNING}Disabled cuDNN for NeMo ASR because cuDNN initialization failed on CUDA device '
+                f'{index} SM {capability[0]}.{capability[1]}: {e}. CUDA will still be used.')
+            return
+        if not cudnn_version or cudnn_version < 90000:
+            return
+
+        index, capability = incompatible_device
+        cudnn.enabled = False
+        print(
+            f'{WARNING}Disabled cuDNN for NeMo ASR because cuDNN {cudnn_version} is not compatible '
+            f'with CUDA device {index} SM {capability[0]}.{capability[1]}. CUDA will still be used.')
+
+    @staticmethod
+    def _cuda_device_indices(torch, device) -> list[int]:
+        if not torch.cuda.is_available():
+            return []
+
+        device_text = str(device or 'auto').strip().lower()
+        if not device_text or device_text == 'auto':
+            current_device = getattr(torch.cuda, 'current_device', None)
+            return [current_device() if callable(current_device) else 0]
+        if device_text == 'cuda':
+            current_device = getattr(torch.cuda, 'current_device', None)
+            return [current_device() if callable(current_device) else 0]
+        if device_text.startswith('cuda:'):
+            try:
+                return [int(device_text.split(':', 1)[1])]
+            except ValueError:
+                return []
+        return []
+
+    def _configure_decoding(self, decoding: str) -> None:
+        if decoding not in {'tdt', 'ctc'}:
+            raise ValueError('Unsupported NeMo ASR decoding mode: %s' % decoding)
+        if decoding == 'tdt':
+            # Keep the model's default TDT/RNNT-style decoder unless CTC is explicitly requested.
+            return
+
+        aux_ctc = getattr(getattr(self.model, 'cfg', None), 'aux_ctc', None)
+        ctc_decoding = getattr(aux_ctc, 'decoding', None)
+        if not hasattr(self.model, 'change_decoding_strategy') or ctc_decoding is None:
+            raise ValueError('The selected NeMo ASR model does not expose a CTC decoder.')
+        try:
+            self.model.change_decoding_strategy(ctc_decoding, decoder_type='ctc')
+        except TypeError:
+            self.model.change_decoding_strategy(ctc_decoding)
+
+    def _quiet_nemo_logging(self):
+        nemo_logging = getattr(self, '_nemo_logging', None)
+        temp_verbosity = getattr(nemo_logging, 'temp_verbosity', None)
+        if temp_verbosity is None:
+            return contextlib.nullcontext()
+        return temp_verbosity(getattr(nemo_logging, 'ERROR', 40))
+
+    @staticmethod
+    def _cleanup_cuda_cache(torch) -> None:
+        gc.collect()
+        if not getattr(torch, 'cuda', None) or not torch.cuda.is_available():
+            return
+        empty_cache = getattr(torch.cuda, 'empty_cache', None)
+        if callable(empty_cache):
+            empty_cache()
+
+    @staticmethod
+    def _extract_text(result) -> str:
+        if result is None:
+            return ''
+        if isinstance(result, str):
+            return result
+        if isinstance(result, dict):
+            return str(result.get('text') or result.get('pred_text') or '')
+        if isinstance(result, tuple):
+            return NemoASRTranscriber._extract_text(result[0] if result else None)
+        if isinstance(result, list):
+            return NemoASRTranscriber._extract_text(result[0] if result else None)
+        text = getattr(result, 'text', None)
+        if text is not None:
+            return str(text)
+        pred_text = getattr(result, 'pred_text', None)
+        if pred_text is not None:
+            return str(pred_text)
+        return str(result)
+
+    def transcribe(self, audio: np.array, initial_prompt: str = None) -> tuple[str, list | None]:
+        audio = np.asarray(audio, dtype=np.float32)
+        temp_path = None
+        temp_dir = os.environ.get('TMPDIR') or None
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.wav', dir=temp_dir, delete=False) as temp_file:
+                temp_path = temp_file.name
+            write_audio(temp_path, SAMPLE_RATE, audio)
+            result = self._transcribe_paths([temp_path])
+            return self._extract_text(result), None
+        finally:
+            if temp_path:
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
+
+    def _transcribe_paths(self, paths: list[str]):
+        kwargs = {
+            'batch_size': 1,
+            'num_workers': 0,
+            'verbose': False,
+        }
+        if self._transcribe_config_cls is not None:
+            kwargs['override_config'] = self._transcribe_config_cls(use_lhotse=False,
+                                                                    batch_size=1,
+                                                                    num_workers=0,
+                                                                    verbose=False)
+        with self._quiet_nemo_logging():
+            try:
+                return self.model.transcribe(paths, **kwargs)
+            except TypeError:
+                kwargs.pop('override_config', None)
+                try:
+                    return self.model.transcribe(paths, **kwargs)
+                except TypeError:
+                    return self.model.transcribe(paths)
 
 
 def _load_qwen3_asr_model_class():
@@ -434,9 +700,9 @@ class Qwen3ASRTranscriber(AudioTranscriber):
             return False
         supported_caps = []
         for arch in torch.cuda.get_arch_list():
-            match = re.fullmatch(r'sm_(\d)(\d+)', arch)
-            if match:
-                supported_caps.append((int(match.group(1)), int(match.group(2))))
+            capability = _parse_torch_cuda_arch(arch)
+            if capability is not None:
+                supported_caps.append(capability)
         if not supported_caps:
             return True
         min_cap = min(supported_caps)

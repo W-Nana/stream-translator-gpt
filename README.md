@@ -40,6 +40,8 @@ flowchart LR
         cc("`**Simul Streaming**`")
         cd("`**OpenAI Transcription API**`")
         ce("`**HuggingFace ASR**`")
+        cf("`**Qwen3-ASR**`")
+        cg("`**NeMo ASR**`")
     end
     subgraph gd["`**Translation**`"]
         direction LR
@@ -65,7 +67,7 @@ Uses [**yt-dlp**](https://github.com/yt-dlp/yt-dlp) to extract audio data from l
 
 Dynamic threshold audio slicing based on [**Silero-VAD**](https://github.com/snakers4/silero-vad).
 
-Use [**Whisper**](https://github.com/openai/whisper) / [**Faster-Whisper**](https://github.com/SYSTRAN/faster-whisper) / [**Simul Streaming**](https://github.com/ufal/SimulStreaming) / [**HuggingFace ASR**](https://huggingface.co/models?pipeline_tag=automatic-speech-recognition) locally or call [**OpenAI Transcription API**](https://platform.openai.com/docs/guides/speech-to-text) remotely for transcription.
+Use [**Whisper**](https://github.com/openai/whisper) / [**Faster-Whisper**](https://github.com/SYSTRAN/faster-whisper) / [**Simul Streaming**](https://github.com/ufal/SimulStreaming) / [**HuggingFace ASR**](https://huggingface.co/models?pipeline_tag=automatic-speech-recognition) / [**Qwen3-ASR**](https://github.com/QwenLM/Qwen3-ASR) / [**NeMo ASR**](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/asr/intro.html) locally or call [**OpenAI Transcription API**](https://platform.openai.com/docs/guides/speech-to-text) remotely for transcription.
 
 Use OpenAI's [**GPT API**](https://platform.openai.com/docs/overview) / Google's [**Gemini API**](https://ai.google.dev/gemini-api/docs) for translation.
 
@@ -118,7 +120,23 @@ uv sync --extra qwen_asr
 uv sync --extra webui --extra qwen_asr
 ```
 
+To include NVIDIA NeMo ASR for Parakeet:
+
+```bash
+# command line only
+uv sync --extra nemo_asr
+
+# WebUI
+uv sync --extra webui --extra nemo_asr
+```
+
 If you need CUDA, run `uv sync` first, then install or replace PyTorch with a build that matches your GPU/CUDA environment from the [PyTorch installation guide](https://pytorch.org/get-started/locally/). After installing a custom PyTorch build, run the virtualenv entry points directly, or use `uv run --no-sync ...`, so `uv` does not replace it during an exact sync.
+
+For later dependency syncs after a custom PyTorch install, use the helper script to keep the current torch/triton/CUDA runtime in place:
+
+```bash
+scripts/uv-sync-preserve-torch.sh --extra webui --extra nemo_asr
+```
 
 Start the command line tool with:
 
@@ -184,6 +202,13 @@ The commands on Colab [![Open In Colab](https://colab.research.google.com/assets
 
     Use `--language auto` to let Qwen3-ASR detect the source language. Qwen3-ASR supports the 30 languages listed by the upstream project (for example `zh`, `en`, `ja`, `yue`, `fil`).
     The default `--qwen3_asr_device_map auto` requires a CUDA GPU supported by the installed PyTorch build; otherwise install a compatible PyTorch build or explicitly choose another device map.
+
+- Transcribe Japanese with **NVIDIA Parakeet / NeMo ASR** (requires `pip install stream-translator-gpt[nemo_asr]`):
+
+    ```stream-translator-gpt {URL} --language ja --use_nemo_asr --nemo_asr_model nvidia/parakeet-tdt_ctc-0.6b-ja```
+
+    Parakeet is a NeMo-based Japanese ASR model, not a Transformers pipeline model. Use `--use_nemo_asr` instead of `--use_hf_asr`; TDT decoding is the default, and `--nemo_asr_decoding ctc` is available as a fallback/debug mode.
+    When `--nemo_asr_device` is a CUDA device, the checkpoint is restored on CPU first and then moved to CUDA to reduce the temporary VRAM peak during model loading. Inference still runs on the selected CUDA device.
 
 - Translate to other language by **Gemini**:
 
@@ -285,6 +310,10 @@ The SSE stream emits `subtitle`, `status`, heartbeat comments, and `error` event
 | `--qwen3_asr_quantization`              | none                           | Qwen3-ASR quantization mode: none, bnb_8bit, or bnb_4bit. Requires bitsandbytes from the `qwen_asr` extra.                                                                                                        |
 | `--qwen3_asr_bnb_4bit_quant_type`       | nf4                            | BitsAndBytes 4-bit quantization type for Qwen3-ASR: nf4 or fp4.                                                                                                                                                   |
 | `--qwen3_asr_bnb_4bit_use_double_quant` |                                | Enable nested/double quantization for Qwen3-ASR 4-bit loading.                                                                                                                                                    |
+| `--use_nemo_asr`                        |                                | Set this flag to use NVIDIA NeMo ASR. Requires `pip install stream-translator-gpt[nemo_asr]`.                                                                                                                     |
+| `--nemo_asr_model`                      | nvidia/parakeet-tdt_ctc-0.6b-ja | NeMo ASR model name. The default Parakeet model is Japanese-focused and uses NeMo, not the Transformers `--use_hf_asr` backend.                                                                                   |
+| `--nemo_asr_device`                     | auto                           | Device used when running NeMo ASR, e.g. auto, cuda:0, cuda:1, cpu, or another device string accepted by PyTorch.                                                                                                  |
+| `--nemo_asr_decoding`                   | tdt                            | Decoding mode for hybrid NeMo ASR models: tdt or ctc. TDT keeps the model default decoder and is recommended for short near-real-time slices.                                                                      |
 | `--transcription_filters`               | emoji_filter,repetition_filter | Filters apply to transcription results, separated by ",". We provide emoji_filter, repetition_filter and japanese_stream_filter.                                                                                   |
 | `--transcription_initial_prompt`        |                                | General purpose prompt/glossary for transcription. Format: "Word1, Word2, Word3, ...". This text is always included in the prompt passed to the model.                                                             |
 | `--disable_transcription_context`       |                                | Set this flag to disable context (previous sentence) propagation in transcription.                                                                                                                                 |

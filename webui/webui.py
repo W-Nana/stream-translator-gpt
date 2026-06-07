@@ -86,8 +86,9 @@ INPUT_KEYS = [
     "input_proxy", "openai_key", "google_key", "openai_base_url", "google_base_url", "overall_proxy", "model_size",
     "hf_model_name", "qwen3_asr_model", "qwen3_asr_dtype", "qwen3_asr_device_map",
     "qwen3_asr_max_new_tokens", "qwen3_asr_quantization", "qwen3_asr_bnb_4bit_quant_type",
-    "qwen3_asr_bnb_4bit_use_double_quant", "language", "whisper_backend", "openai_transcription_model",
-    "vad_threshold", "min_audio_len", "max_audio_len", "target_audio_len", "silence_threshold",
+    "qwen3_asr_bnb_4bit_use_double_quant", "nemo_asr_model", "nemo_asr_device", "nemo_asr_decoding",
+    "language", "whisper_backend", "openai_transcription_model", "vad_threshold", "min_audio_len",
+    "max_audio_len", "target_audio_len", "silence_threshold",
     "disable_dynamic_vad", "disable_dynamic_silence", "prefix_retention_len", "filter_emoji", "filter_repetition",
     "filter_japanese_stream",
     "disable_transcription_context", "transcription_initial_prompt", "translation_prompt", "translation_provider",
@@ -324,6 +325,9 @@ def build_translator_command(
         qwen3_asr_quantization,
         qwen3_asr_bnb_4bit_quant_type,
         qwen3_asr_bnb_4bit_use_double_quant,
+        nemo_asr_model,
+        nemo_asr_device,
+        nemo_asr_decoding,
         vad_threshold,
         min_audio_len,
         max_audio_len,
@@ -451,6 +455,8 @@ def build_translator_command(
         cmd.append("--use_hf_asr")
     elif whisper_backend == "Qwen3-ASR":
         cmd.append("--use_qwen3_asr")
+    elif whisper_backend == "NeMo ASR":
+        cmd.append("--use_nemo_asr")
     elif whisper_backend == "OpenAI Transcription API":
         cmd.append("--use_openai_transcription_api")
         add_arg("--openai_transcription_model", openai_transcription_model, "openai_transcription_model")
@@ -467,6 +473,13 @@ def build_translator_command(
                 "qwen3_asr_bnb_4bit_quant_type")
         if qwen3_asr_bnb_4bit_use_double_quant:
             cmd.append("--qwen3_asr_bnb_4bit_use_double_quant")
+    elif whisper_backend == "NeMo ASR":
+        if nemo_asr_model:
+            cmd.extend(["--nemo_asr_model", str(nemo_asr_model)])
+        if nemo_asr_device:
+            cmd.extend(["--nemo_asr_device", str(nemo_asr_device)])
+        if nemo_asr_decoding:
+            cmd.extend(["--nemo_asr_decoding", str(nemo_asr_decoding)])
     else:
         add_arg("--model", model_size, "model_size")
     add_arg("--language", language, "language")
@@ -600,6 +613,9 @@ def run_translator(
         qwen3_asr_quantization,
         qwen3_asr_bnb_4bit_quant_type,
         qwen3_asr_bnb_4bit_use_double_quant,
+        nemo_asr_model,
+        nemo_asr_device,
+        nemo_asr_decoding,
         vad_threshold,
         min_audio_len,
         max_audio_len,
@@ -694,6 +710,9 @@ def run_translator(
                                           qwen3_asr_quantization=qwen3_asr_quantization,
                                           qwen3_asr_bnb_4bit_quant_type=qwen3_asr_bnb_4bit_quant_type,
                                           qwen3_asr_bnb_4bit_use_double_quant=qwen3_asr_bnb_4bit_use_double_quant,
+                                          nemo_asr_model=nemo_asr_model,
+                                          nemo_asr_device=nemo_asr_device,
+                                          nemo_asr_decoding=nemo_asr_decoding,
                                           vad_threshold=vad_threshold,
                                           min_audio_len=min_audio_len,
                                           max_audio_len=max_audio_len,
@@ -889,6 +908,7 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                 ("Faster-Whisper & Simul-Streaming", "Faster-Whisper & Simul-Streaming"),
                 ("HuggingFace ASR", "HuggingFace ASR"),
                 ("Qwen3-ASR", "Qwen3-ASR"),
+                ("NeMo ASR", "NeMo ASR"),
                 (i18n.get("openai_transcription_api_option"), "OpenAI Transcription API")
             ],
                                        label=i18n.get("transcription_type"),
@@ -922,6 +942,11 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                                               value=get_default("qwen3_asr_model"),
                                               visible=False,
                                               allow_custom_value=True)
+                nemo_asr_model = gr.Dropdown(["nvidia/parakeet-tdt_ctc-0.6b-ja"],
+                                             label=i18n.get("nemo_asr_model"),
+                                             value=get_default("nemo_asr_model"),
+                                             visible=False,
+                                             allow_custom_value=True)
                 language = gr.Dropdown(
                     [
                         "auto", "af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br", "bs", "ca", "cs",
@@ -951,6 +976,16 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                                                      label=i18n.get("qwen3_asr_max_new_tokens"),
                                                      visible=False,
                                                      precision=0)
+                nemo_asr_device = gr.Dropdown(["auto", "cuda:0", "cuda:1", "cpu"],
+                                             label=i18n.get("nemo_asr_device"),
+                                             value=get_default("nemo_asr_device"),
+                                             visible=False,
+                                             allow_custom_value=True)
+                nemo_asr_decoding = gr.Dropdown(["tdt", "ctc"],
+                                               label=i18n.get("nemo_asr_decoding"),
+                                               value=get_default("nemo_asr_decoding"),
+                                               visible=False,
+                                               allow_custom_value=False)
             with gr.Row():
                 qwen3_asr_quantization = gr.Dropdown(["none", "bnb_8bit", "bnb_4bit"],
                                                      label=i18n.get("qwen3_asr_quantization"),
@@ -1132,9 +1167,10 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
         openai_visible = (choice == "OpenAI Transcription API")
         hf_visible = (choice == "HuggingFace ASR")
         qwen_visible = (choice == "Qwen3-ASR")
+        nemo_visible = (choice == "NeMo ASR")
         return {
             openai_transcription_model: gr.update(visible=openai_visible),
-            model_size: gr.update(visible=not openai_visible and not hf_visible and not qwen_visible),
+            model_size: gr.update(visible=not openai_visible and not hf_visible and not qwen_visible and not nemo_visible),
             openai_transcription_group: gr.update(visible=openai_visible),
             hf_model_name: gr.update(visible=hf_visible),
             qwen3_asr_model: gr.update(visible=qwen_visible),
@@ -1144,13 +1180,17 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
             qwen3_asr_quantization: gr.update(visible=qwen_visible),
             qwen3_asr_bnb_4bit_quant_type: gr.update(visible=qwen_visible),
             qwen3_asr_bnb_4bit_use_double_quant: gr.update(visible=qwen_visible),
+            nemo_asr_model: gr.update(visible=nemo_visible),
+            nemo_asr_device: gr.update(visible=nemo_visible),
+            nemo_asr_decoding: gr.update(visible=nemo_visible),
         }
 
     whisper_backend.change(update_backend_visibility, whisper_backend,
                            [openai_transcription_model, model_size, openai_transcription_group, hf_model_name,
                             qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens,
                             qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type,
-                            qwen3_asr_bnb_4bit_use_double_quant])
+                            qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device,
+                            nemo_asr_decoding])
 
     # Translation Visibility
     def update_translation_visibility(choice):
@@ -1209,10 +1249,11 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                         input_cookies, input_proxy, openai_key, google_key, overall_proxy, model_size, language,
                         whisper_backend, openai_transcription_model, hf_model_name, qwen3_asr_model, qwen3_asr_dtype,
                         qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
-                        qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, vad_threshold,
-                        min_audio_len, max_audio_len, target_audio_len, silence_threshold, disable_dynamic_vad,
-                        disable_dynamic_silence, prefix_retention_len, filter_emoji, filter_repetition,
-                        filter_japanese_stream, disable_transcription_context, transcription_initial_prompt,
+                        qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model,
+                        nemo_asr_device, nemo_asr_decoding, vad_threshold, min_audio_len, max_audio_len,
+                        target_audio_len, silence_threshold, disable_dynamic_vad, disable_dynamic_silence,
+                        prefix_retention_len, filter_emoji, filter_repetition, filter_japanese_stream,
+                        disable_transcription_context, transcription_initial_prompt,
                         translation_prompt, translation_provider, gpt_model, gemini_model, history_size,
                         translation_timeout, openai_base_url, google_base_url, processing_proxy, use_json_result,
                         retry_if_translation_fails, show_timestamps, hide_transcription, output_file, output_proxy,

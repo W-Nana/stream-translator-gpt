@@ -17,7 +17,7 @@ from .common import ClientPool, start_daemon_thread, is_url, WARNING, ERROR, INF
 from .audio_getter import StreamAudioGetter, LocalFileAudioGetter, DeviceAudioGetter
 from .audio_slicer import AudioSlicer
 from .audio_transcriber import (OpenaiWhisper, FasterWhisper, SimulStreaming, RemoteOpenaiTranscriber, HFTranscriber,
-                                Qwen3ASRTranscriber)
+                                Qwen3ASRTranscriber, NemoASRTranscriber)
 from .llm_translator import GPTTranslator, GeminiTranslator
 from .result_exporter import ResultExporter
 from .subtitle_sharing import DEFAULT_PUBLIC_HOST, DEFAULT_PUBLIC_PORT, SubtitleShareServer, create_task_id
@@ -30,13 +30,13 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
          disable_dynamic_vad_threshold, model, language, use_faster_whisper, use_simul_streaming, use_hf_asr,
          use_qwen3_asr, use_openai_transcription_api, openai_transcription_model, qwen3_asr_model, qwen3_asr_dtype,
          qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
-         qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, transcription_filters,
-         disable_transcription_context, transcription_initial_prompt, gpt_model, gemini_model, translation_prompt,
-         translation_history_size, translation_timeout, use_json_result, retry_if_translation_fails, temperature, top_p,
-         top_k, prompt_cache_key, reasoning_effort, verbosity, service_tier, debug_mode, processing_proxy,
-         output_timestamps, hide_transcribe_result, output_file_path, cqhttp_url, cqhttp_token, discord_webhook_url,
-         telegram_token, telegram_chat_id, output_proxy, enable_subtitle_sharing, subtitle_share_public_port,
-         subtitle_share_host):
+         qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, use_nemo_asr, nemo_asr_model,
+         nemo_asr_device, nemo_asr_decoding, transcription_filters, disable_transcription_context,
+         transcription_initial_prompt, gpt_model, gemini_model, translation_prompt, translation_history_size,
+         translation_timeout, use_json_result, retry_if_translation_fails, temperature, top_p, top_k,
+         prompt_cache_key, reasoning_effort, verbosity, service_tier, debug_mode, processing_proxy, output_timestamps,
+         hide_transcribe_result, output_file_path, cqhttp_url, cqhttp_token, discord_webhook_url, telegram_token,
+         telegram_chat_id, output_proxy, enable_subtitle_sharing, subtitle_share_public_port, subtitle_share_host):
     if openai_base_url:
         os.environ['OPENAI_BASE_URL'] = openai_base_url
 
@@ -142,6 +142,12 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
                                            bnb_4bit_quant_type=qwen3_asr_bnb_4bit_quant_type,
                                            bnb_4bit_use_double_quant=qwen3_asr_bnb_4bit_use_double_quant,
                                            **common_args)
+            elif use_nemo_asr:
+                return NemoASRTranscriber(model=nemo_asr_model,
+                                          proxy=processing_proxy,
+                                          device=nemo_asr_device,
+                                          decoding=nemo_asr_decoding,
+                                          **common_args)
             else:
                 return OpenaiWhisper(model=model, language=language, **common_args)
 
@@ -414,6 +420,20 @@ def cli():
     parser.add_argument('--qwen3_asr_bnb_4bit_use_double_quant',
                         action='store_true',
                         help='Enable nested/double quantization for Qwen3-ASR 4-bit loading.')
+    parser.add_argument('--use_nemo_asr', action='store_true', help='Set this flag to use NVIDIA NeMo ASR.')
+    parser.add_argument('--nemo_asr_model',
+                        type=str,
+                        default='nvidia/parakeet-tdt_ctc-0.6b-ja',
+                        help='NeMo ASR model name, e.g. nvidia/parakeet-tdt_ctc-0.6b-ja.')
+    parser.add_argument('--nemo_asr_device',
+                        type=str,
+                        default='auto',
+                        help='Device used when running NeMo ASR, e.g. auto, cuda:0, cpu.')
+    parser.add_argument('--nemo_asr_decoding',
+                        type=str,
+                        choices=['tdt', 'ctc'],
+                        default='tdt',
+                        help='Decoding mode for hybrid NeMo ASR models. TDT keeps the model default decoder.')
     parser.add_argument(
         '--transcription_filters',
         type=str,
@@ -647,6 +667,9 @@ def cli():
         transcription_encoder_flag_num += 1
         transcription_decoder_flag_num += 1
     if args['use_qwen3_asr']:
+        transcription_encoder_flag_num += 1
+        transcription_decoder_flag_num += 1
+    if args['use_nemo_asr']:
         transcription_encoder_flag_num += 1
         transcription_decoder_flag_num += 1
     if transcription_encoder_flag_num > 1:
