@@ -6,10 +6,10 @@ build-backend = "setuptools.build_meta"
 name = "stream-translator-gpt"
 version = "0.0.0"
 authors = [
-  { name="ion", email="ionicbond3@gmail.com" },
+  { name="7White", email="sevenwhite10@gmail.com" },
 ]
 description = "Command line tool to transcribe & translate audio from livestreams in real time"
-readme = "README_PyPI.md"
+readme = "README.md"
 requires-python = ">=3.10"
 keywords = [
     "translator",
@@ -62,8 +62,9 @@ stream-translator-gpt = "stream_translator_gpt.main:cli"
 stream-translator-gpt-webui = "webui.webui:main"
 
 [project.urls]
-Homepage = "https://github.com/ionic-bond/stream-translator-gpt"
-Issues = "https://github.com/ionic-bond/stream-translator-gpt/issues"
+Homepage = "https://github.com/W-Nana/stream-translator-gpt"
+Issues = "https://github.com/W-Nana/stream-translator-gpt/issues"
+Original = "https://github.com/ionic-bond/stream-translator-gpt"
 
 [tool.setuptools.packages.find]
 where = ["."]

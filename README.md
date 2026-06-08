@@ -1,16 +1,18 @@
 # stream-translator-gpt
 
-[![PyPI version](https://badge.fury.io/py/stream-translator-gpt.svg)](https://badge.fury.io/py/stream-translator-gpt) [![Python Versions](https://img.shields.io/pypi/pyversions/stream-translator-gpt.svg)](https://pypi.org/project/stream-translator-gpt/) [![Downloads](https://static.pepy.tech/badge/stream-translator-gpt)](https://pepy.tech/project/stream-translator-gpt) [![License](https://img.shields.io/github/license/ionic-bond/stream-translator-gpt.svg)](https://github.com/ionic-bond/stream-translator-gpt/blob/main/LICENSE) [![Gradio](https://img.shields.io/badge/WebUI-Gradio-orange)](https://gradio.app)
+[![License](https://img.shields.io/github/license/W-Nana/stream-translator-gpt.svg)](./LICENSE) [![Gradio](https://img.shields.io/badge/WebUI-Gradio-orange)](https://gradio.app)
 
 English | [中文](./README_CN.md) | [日本語](./README_JP.md)
 
 stream-translator-gpt is a command-line tool for real-time transcription and translation of live streams. We have now added an easier-to-use WebUI entry point.
 
-Try it on Colab: 
+This repository is a fork of [ionic-bond/stream-translator-gpt](https://github.com/ionic-bond/stream-translator-gpt).
+
+Try it on Colab:
 
 |                                                                                     WebUI                                                                                     |                                                                                       Command Line                                                                                        |
 | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
-| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ionic-bond/stream-translator-gpt/blob/main/webui.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ionic-bond/stream-translator-gpt/blob/main/stream_translator.ipynb) |
+| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/W-Nana/stream-translator-gpt/blob/main/webui.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/W-Nana/stream-translator-gpt/blob/main/stream_translator.ipynb) |
 
 (Due to frequent scraping and theft of API keys, we are unable to provide a trial API key. You need to fill in your own API key.)
 
@@ -32,6 +34,7 @@ flowchart LR
     subgraph gb["`**Audio Slicing**`"]
         direction LR
         ba("`**Silero VAD**`")
+        bb("`**FireRedVAD**`")
     end
     subgraph gc["`**Transcription**`"]
         direction LR
@@ -65,13 +68,33 @@ flowchart LR
 
 Uses [**yt-dlp**](https://github.com/yt-dlp/yt-dlp) to extract audio data from live streams.
 
-Dynamic threshold audio slicing based on [**Silero-VAD**](https://github.com/snakers4/silero-vad).
+Dynamic threshold audio slicing can use [**Silero-VAD**](https://github.com/snakers4/silero-vad) or **FireRedVAD** through OmniVAD.
 
 Use [**Whisper**](https://github.com/openai/whisper) / [**Faster-Whisper**](https://github.com/SYSTRAN/faster-whisper) / [**Simul Streaming**](https://github.com/ufal/SimulStreaming) / [**HuggingFace ASR**](https://huggingface.co/models?pipeline_tag=automatic-speech-recognition) / [**Qwen3-ASR**](https://github.com/QwenLM/Qwen3-ASR) / [**NeMo ASR**](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/asr/intro.html) locally or call [**OpenAI Transcription API**](https://platform.openai.com/docs/guides/speech-to-text) remotely for transcription.
 
 Use OpenAI's [**GPT API**](https://platform.openai.com/docs/overview) / Google's [**Gemini API**](https://ai.google.dev/gemini-api/docs) for translation.
 
 Finally, the results can be printed to the terminal, saved to a file, or sent to a group via social media bot.
+
+## Project Layout
+
+```text
+.
+├── stream_translator_gpt/        # Core CLI pipeline, ASR backends, VAD, translation, subtitle sharing
+│   ├── assets/live_subtitles.html
+│   └── simul_streaming/          # Bundled SimulStreaming / Whisper streaming components
+├── webui/                        # Gradio WebUI, defaults, and locale files
+│   ├── default.json
+│   └── locales/
+├── scripts/                      # Local uv environment helpers for desktop/source-tree runs
+├── requirements*.txt             # Compatibility requirement files for optional dependency groups
+├── stream_translator.ipynb       # Colab command-line notebook
+├── webui.ipynb                   # Colab WebUI notebook
+├── pyproject.toml                # Package metadata, uv dependencies/extras, console entry points
+└── uv.lock                       # Locked uv dependency resolution
+```
+
+The generated local runtime directories `.venv`, `.cache`, `.local`, `.tmp`, and `.config` are intentionally ignored and should stay out of commits.
 
 ## Prerequisites
 
@@ -89,96 +112,70 @@ Finally, the results can be printed to the terminal, saved to a file, or sent to
 
 ### uv Local Deployment
 
-For a source checkout, you can use `uv` with Python 3.12.
+This repository is intended to be run from a source checkout with `uv` and Python 3.12.
 
-Optional: source the local environment script first to keep virtualenvs, caches, downloaded models, and temporary files inside this project directory (`.venv`, `.cache`, `.local`, `.tmp`).
+1. Optional: keep the virtualenv, uv cache, model downloads, and temporary files inside this project directory.
 
-```bash
-source scripts/use-local-env.sh
-```
+    ```bash
+    source scripts/use-local-env.sh
+    ```
 
-Command line only:
+    This sets project-local paths such as `.venv`, `.cache`, `.local`, and `.tmp`.
 
-```bash
-uv python install 3.12
-uv sync
-```
+2. Install Python 3.12 with uv, then sync the environment.
 
-WebUI:
+    ```bash
+    uv python install 3.12
+    uv sync
+    ```
 
-```bash
-uv sync --extra webui
-```
+3. Add extras for the features you need. Use one `--extra` per feature and combine them freely.
 
-To include Qwen3-ASR:
+    | Extra | Enables |
+    | :---- | :------ |
+    | `webui` | Gradio WebUI |
+    | `hf_asr` | HuggingFace ASR backend |
+    | `qwen_asr` | Qwen3-ASR backend and BitsAndBytes quantization support |
+    | `nemo_asr` | NVIDIA NeMo ASR backend, including Parakeet |
+    | `firered_vad` | FireRedVAD through OmniVAD |
 
-```bash
-# command line only
-uv sync --extra qwen_asr
+    Command line only with Qwen3-ASR:
 
-# WebUI
-uv sync --extra webui --extra qwen_asr
-```
+    ```bash
+    uv sync --extra qwen_asr
+    ```
 
-To include NVIDIA NeMo ASR for Parakeet:
+    All extras:
 
-```bash
-# command line only
-uv sync --extra nemo_asr
+    ```bash
+    uv sync --extra webui --extra hf_asr --extra qwen_asr --extra nemo_asr --extra firered_vad
+    ```
 
-# WebUI
-uv sync --extra webui --extra nemo_asr
-```
+4. If you need a custom CUDA/PyTorch build, sync the project first, then install or replace PyTorch with the build that matches your GPU/CUDA environment from the [PyTorch installation guide](https://pytorch.org/get-started/locally/).
 
-To include FireRedVAD via OmniVAD:
+    After installing a custom PyTorch build, run commands with `uv run --no-sync ...` or call `.venv/bin/...` directly. For later dependency syncs, use the helper script so uv keeps the existing torch/triton/CUDA runtime packages in place:
 
-```bash
-# command line only
-uv sync --extra firered_vad
+    ```bash
+    scripts/uv-sync-preserve-torch.sh --extra webui --extra nemo_asr
+    ```
 
-# WebUI
-uv sync --extra webui --extra firered_vad
-```
+5. Start the command line tool or WebUI.
 
-If you need CUDA, run `uv sync` first, then install or replace PyTorch with a build that matches your GPU/CUDA environment from the [PyTorch installation guide](https://pytorch.org/get-started/locally/). After installing a custom PyTorch build, run the virtualenv entry points directly, or use `uv run --no-sync ...`, so `uv` does not replace it during an exact sync.
+    ```bash
+    uv run --no-sync stream-translator-gpt {URL}
+    uv run --no-sync stream-translator-gpt-webui
+    ```
 
-For later dependency syncs after a custom PyTorch install, use the helper script to keep the current torch/triton/CUDA runtime in place:
+    If you sourced `scripts/use-local-env.sh`, the virtualenv is on `PATH`, so these are also available:
 
-```bash
-scripts/uv-sync-preserve-torch.sh --extra webui --extra nemo_asr
-```
-
-Start the command line tool with:
-
-```bash
-stream-translator-gpt
-# or
-uv run --no-sync stream-translator-gpt
-```
-
-Start the WebUI with:
-
-```bash
-stream-translator-gpt-webui
-# or
-uv run --no-sync stream-translator-gpt-webui
-```
-
-### WebUI
-
-```
-pip install stream-translator-gpt[webui] -U
-```
-
-### Command Line
-
-```
-pip install stream-translator-gpt -U
-```
+    ```bash
+    stream-translator-gpt {URL}
+    stream-translator-gpt-webui
+    ```
 
 ## Usage
 
-The commands on Colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ionic-bond/stream-translator-gpt/blob/main/stream_translator.ipynb) are the recommended usage, below are some other commonly used options.
+The commands on Colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/W-Nana/stream-translator-gpt/blob/main/stream_translator.ipynb) are the recommended usage, below are some other commonly used options.
 
 - Transcribe live streaming (default use **Whisper**):
 
@@ -200,31 +197,31 @@ The commands on Colab [![Open In Colab](https://colab.research.google.com/assets
 
     ```stream-translator-gpt {URL} --language {input_language} --use_openai_transcription_api --openai_api_key {your_openai_key}```
 
-- Transcribe by a **HuggingFace ASR** model (requires `pip install stream-translator-gpt[hf_asr]`):
+- Transcribe by a **HuggingFace ASR** model (requires syncing with `--extra hf_asr`):
 
     ```stream-translator-gpt {URL} --model {hf_model_name} --use_hf_asr```
 
     Only models with `pipeline_tag: automatic-speech-recognition` on Hugging Face Hub are supported.
 
-- Transcribe by **Qwen3-ASR** (requires `pip install stream-translator-gpt[qwen_asr]`):
+- Transcribe by **Qwen3-ASR** (requires syncing with `--extra qwen_asr`):
 
     ```stream-translator-gpt {URL} --language {input_language} --use_qwen3_asr --qwen3_asr_model Qwen/Qwen3-ASR-0.6B```
 
     Use `--language auto` to let Qwen3-ASR detect the source language. Qwen3-ASR supports the 30 languages listed by the upstream project (for example `zh`, `en`, `ja`, `yue`, `fil`).
     The default `--qwen3_asr_device_map auto` requires a CUDA GPU supported by the installed PyTorch build; otherwise install a compatible PyTorch build or explicitly choose another device map.
 
-- Transcribe Japanese with **NVIDIA Parakeet / NeMo ASR** (requires `pip install stream-translator-gpt[nemo_asr]`):
+- Transcribe Japanese with **NVIDIA Parakeet / NeMo ASR** (requires syncing with `--extra nemo_asr`):
 
     ```stream-translator-gpt {URL} --language ja --use_nemo_asr --nemo_asr_model nvidia/parakeet-tdt_ctc-0.6b-ja```
 
     Parakeet is a NeMo-based Japanese ASR model, not a Transformers pipeline model. Use `--use_nemo_asr` instead of `--use_hf_asr`; TDT decoding is the default, and `--nemo_asr_decoding ctc` is available as a fallback/debug mode.
     When `--nemo_asr_device` is a CUDA device, the checkpoint is restored on CPU first and then moved to CUDA to reduce the temporary VRAM peak during model loading. Inference still runs on the selected CUDA device.
 
-- Use **FireRedVAD** for audio slicing (requires `pip install stream-translator-gpt[firered_vad]`):
+- Use **FireRedVAD** for audio slicing (requires syncing with `--extra firered_vad`):
 
     ```stream-translator-gpt {URL} --vad_backend firered```
 
-    FireRedVAD is provided through OmniVAD's CPU native runtime. It does not install or pin PyTorch, and uses the bundled OmniVAD FireRedVAD model unless `--firered_vad_model_path` is set.
+    FireRedVAD is provided through OmniVAD's CPU native runtime. It uses the bundled OmniVAD FireRedVAD model unless `--firered_vad_model_path` is set.
 
 ### ASR model preloading
 
@@ -289,6 +286,8 @@ stream-translator-gpt {URL} --language {input_language} --enable_subtitle_sharin
 
 The subtitle sharing server also serves a built-in live subtitle viewer at `http://127.0.0.1:8765/` and `http://127.0.0.1:8765/live_subtitles.html`.
 
+You can also display the shared subtitles with [W-Nana/SubtitleOverlay](https://github.com/W-Nana/SubtitleOverlay). Start subtitle sharing here, then set SubtitleOverlay's translation server URL to the public subtitle server, for example `http://127.0.0.1:8765` on the same machine or `http://192.168.1.100:8765` from another device on the LAN.
+
 External clients can then discover and consume the live subtitle stream with:
 
 1. `GET /api/server/info` on the WebUI server, or on the CLI subtitle sharing port, to read `public_host`, `public_port`, and `enable_subtitle_sharing`.
@@ -323,7 +322,7 @@ The SSE stream emits `subtitle`, `status`, heartbeat comments, and `error` event
 | `--continuous_no_speech_threshold`      | 1.0                            | Slice if there is no speech during this number of seconds. If the dynamic no speech threshold is enabled (enabled by default), the actual threshold will be dynamically adjusted based on this value.              |
 | `--disable_dynamic_no_speech_threshold` |                                | Set this flag to disable dynamic no speech threshold.                                                                                                                                                              |
 | `--prefix_retention_length`             | 0.5                            | The length of the retention prefix audio during slicing.                                                                                                                                                           |
-| `--vad_backend`                         | silero                         | VAD backend used for audio slicing: silero or firered. FireRedVAD requires `pip install stream-translator-gpt[firered_vad]`.                                                                                      |
+| `--vad_backend`                         | silero                         | VAD backend used for audio slicing: silero or firered. FireRedVAD requires the `firered_vad` extra.                                                                                                                |
 | `--firered_vad_model_path`              |                                | Optional OmniVAD FireRedVAD `.omnivad` model path. If omitted, the bundled OmniVAD model is used.                                                                                                                 |
 | `--vad_threshold`                       | 0.35                           | Range 0~1. the higher this value, the stricter the speech judgment. If dynamic VAD threshold is enabled (enabled by default), this threshold will be adjusted dynamically based on the input speech's VAD results. |
 | `--disable_dynamic_vad_threshold`       |                                | Set this flag to disable dynamic VAD threshold.                                                                                                                                                                    |
@@ -332,9 +331,9 @@ The SSE stream emits `subtitle`, `status`, heartbeat comments, and `error` event
 | `--language`                            | auto                           | Language spoken in the stream. See [here](https://github.com/openai/whisper#available-models-and-languages) for available languages.                                                                               |
 | `--use_faster_whisper`                  |                                | Set this flag to use Faster-Whisper instead of Whisper. If used with --use_simul_streaming, SimulStreaming with Faster-Whisper as the encoder will be used.                                                        |
 | `--use_simul_streaming`                 |                                | Set this flag to use SimulStreaming instead of Whisper. If used with --use_faster_whisper, SimulStreaming with Faster-Whisper as the encoder will be used.                                                         |
-| `--use_openai_transcription_api`        |                                | Set this flag to use OpenAI transcription API instead of the original local Whipser.                                                                                                                               |
-| `--use_hf_asr`                          |                                | Set this flag to use a HuggingFace ASR model. Use `--model` to specify the model ID. Requires `pip install stream-translator-gpt[hf_asr]`.                                                                         |
-| `--use_qwen3_asr`                       |                                | Set this flag to use Qwen3-ASR. Requires `pip install stream-translator-gpt[qwen_asr]`.                                                                                                                            |
+| `--use_openai_transcription_api`        |                                | Set this flag to use OpenAI transcription API instead of the original local Whisper.                                                                                                                               |
+| `--use_hf_asr`                          |                                | Set this flag to use a HuggingFace ASR model. Use `--model` to specify the model ID. Requires the `hf_asr` extra.                                                                                                  |
+| `--use_qwen3_asr`                       |                                | Set this flag to use Qwen3-ASR. Requires the `qwen_asr` extra.                                                                                                                                                     |
 | `--qwen3_asr_model`                     | Qwen/Qwen3-ASR-0.6B            | Qwen3-ASR model name, e.g. Qwen/Qwen3-ASR-0.6B or Qwen/Qwen3-ASR-1.7B.                                                                                                                                             |
 | `--qwen3_asr_dtype`                     | bfloat16                       | Torch dtype used when loading Qwen3-ASR, e.g. bfloat16, float16, float32.                                                                                                                                          |
 | `--qwen3_asr_device_map`                | auto                           | Device map used when loading Qwen3-ASR, e.g. auto, cuda:0, cpu. The selected CUDA device must be supported by the installed PyTorch build.                                                                         |
@@ -342,7 +341,7 @@ The SSE stream emits `subtitle`, `status`, heartbeat comments, and `error` event
 | `--qwen3_asr_quantization`              | none                           | Qwen3-ASR quantization mode: none, bnb_8bit, or bnb_4bit. Requires bitsandbytes from the `qwen_asr` extra.                                                                                                        |
 | `--qwen3_asr_bnb_4bit_quant_type`       | nf4                            | BitsAndBytes 4-bit quantization type for Qwen3-ASR: nf4 or fp4.                                                                                                                                                   |
 | `--qwen3_asr_bnb_4bit_use_double_quant` |                                | Enable nested/double quantization for Qwen3-ASR 4-bit loading.                                                                                                                                                    |
-| `--use_nemo_asr`                        |                                | Set this flag to use NVIDIA NeMo ASR. Requires `pip install stream-translator-gpt[nemo_asr]`.                                                                                                                     |
+| `--use_nemo_asr`                        |                                | Set this flag to use NVIDIA NeMo ASR. Requires the `nemo_asr` extra.                                                                                                                                               |
 | `--nemo_asr_model`                      | nvidia/parakeet-tdt_ctc-0.6b-ja | NeMo ASR model name. The default Parakeet model is Japanese-focused and uses NeMo, not the Transformers `--use_hf_asr` backend.                                                                                   |
 | `--nemo_asr_device`                     | auto                           | Device used when running NeMo ASR, e.g. auto, cuda:0, cuda:1, cpu, or another device string accepted by PyTorch.                                                                                                  |
 | `--nemo_asr_decoding`                   | tdt                            | Decoding mode for hybrid NeMo ASR models: tdt or ctc. TDT keeps the model default decoder and is recommended for short near-real-time slices.                                                                      |
@@ -382,11 +381,3 @@ The SSE stream emits `subtitle`, `status`, heartbeat comments, and `error` event
 | `--enable_subtitle_sharing`             |                                | Start a public SSE subtitle sharing server from the CLI process.                                                                                                                                                    |
 | `--subtitle_share_host`                 | 0.0.0.0                        | Host/IP to bind the subtitle sharing server. Use 0.0.0.0 to listen on all interfaces.                                                                                                                               |
 | `--subtitle_share_public_port`          | 8765                           | Public subtitle sharing port used with `--enable_subtitle_sharing`.                                                                                                                                                 |
-
-## Contact me
-
-Telegram: [@ionic_bond](https://t.me/ionic_bond)
-
-## Donate
-
-[PayPal Donate](https://www.paypal.com/donate/?hosted_button_id=D5DRBK9BL6DUA) or [PayPal](https://paypal.me/ionicbond3)

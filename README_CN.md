@@ -1,16 +1,18 @@
 # stream-translator-gpt
 
-[![PyPI version](https://badge.fury.io/py/stream-translator-gpt.svg)](https://badge.fury.io/py/stream-translator-gpt) [![Python Versions](https://img.shields.io/pypi/pyversions/stream-translator-gpt.svg)](https://pypi.org/project/stream-translator-gpt/) [![Downloads](https://static.pepy.tech/badge/stream-translator-gpt)](https://pepy.tech/project/stream-translator-gpt) [![License](https://img.shields.io/github/license/ionic-bond/stream-translator-gpt.svg)](https://github.com/ionic-bond/stream-translator-gpt/blob/main/LICENSE) [![Gradio](https://img.shields.io/badge/WebUI-Gradio-orange)](https://gradio.app)
+[![License](https://img.shields.io/github/license/W-Nana/stream-translator-gpt.svg)](./LICENSE) [![Gradio](https://img.shields.io/badge/WebUI-Gradio-orange)](https://gradio.app)
 
 [English](./README.md) | 中文 | [日本語](./README_JP.md)
 
 stream-translator-gpt 是一个用于实时转录和翻译直播流的命令行工具。我们新增了更易于使用的 WebUI 入口。
 
+本仓库是原项目 [ionic-bond/stream-translator-gpt](https://github.com/ionic-bond/stream-translator-gpt) 的 fork。
+
 在 Colab 上尝试：
 
 |                                                                                     WebUI                                                                                     |                                                                                          命令行                                                                                           |
 | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
-| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ionic-bond/stream-translator-gpt/blob/main/webui.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ionic-bond/stream-translator-gpt/blob/main/stream_translator.ipynb) |
+| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/W-Nana/stream-translator-gpt/blob/main/webui.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/W-Nana/stream-translator-gpt/blob/main/stream_translator.ipynb) |
 
 （由于 API key 被频繁爬取和盗用，我们无法提供用于试用的 API key。您需要填写自己的 API key。）
 
@@ -32,6 +34,7 @@ flowchart LR
     subgraph gb["`**音频切片**`"]
         direction LR
         ba("`**Silero VAD**`")
+        bb("`**FireRedVAD**`")
     end
     subgraph gc["`**语音转文字**`"]
         direction LR
@@ -61,17 +64,37 @@ flowchart LR
     gb ==> gc
     gc ==> gd
     gd ==> ge
-````
+```
 
 使用 [**yt-dlp**](https://github.com/yt-dlp/yt-dlp) 从直播流中提取音频数据。
 
-基于 [**Silero-VAD**](https://github.com/snakers4/silero-vad) 的动态阈值音频切片。
+动态阈值音频切片可以使用 [**Silero-VAD**](https://github.com/snakers4/silero-vad)，也可以通过 OmniVAD 使用 **FireRedVAD**。
 
 在本地使用 [**Whisper**](https://github.com/openai/whisper) / [**Faster-Whisper**](https://github.com/SYSTRAN/faster-whisper) / [**Simul Streaming**](https://github.com/ufal/SimulStreaming) / [**HuggingFace ASR**](https://huggingface.co/models?pipeline_tag=automatic-speech-recognition) / [**Qwen3-ASR**](https://github.com/QwenLM/Qwen3-ASR) / [**NeMo ASR**](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/asr/intro.html) 或远程调用 [**OpenAI Transcription API**](https://platform.openai.com/docs/guides/speech-to-text) 进行转录。
 
 使用 OpenAI 的 [**GPT API**](https://platform.openai.com/docs/overview) / Google 的 [**Gemini API**](https://ai.google.dev/gemini-api/docs) 进行翻译。
 
 最后，结果可以打印到终端、保存到文件，或通过社交媒体机器人发送到群组。
+
+## 项目结构
+
+```text
+.
+├── stream_translator_gpt/        # 核心 CLI pipeline、ASR 后端、VAD、翻译、字幕共享
+│   ├── assets/live_subtitles.html
+│   └── simul_streaming/          # 内置 SimulStreaming / Whisper streaming 组件
+├── webui/                        # Gradio WebUI、默认设置和多语言文件
+│   ├── default.json
+│   └── locales/
+├── scripts/                      # 桌面/源码树运行用的本地 uv 环境辅助脚本
+├── requirements*.txt             # 可选依赖组的兼容 requirements 文件
+├── stream_translator.ipynb       # Colab 命令行 notebook
+├── webui.ipynb                   # Colab WebUI notebook
+├── pyproject.toml                # 包元数据、uv 依赖/extras、命令入口
+└── uv.lock                       # uv 锁定依赖解析结果
+```
+
+生成的本地运行目录 `.venv`、`.cache`、`.local`、`.tmp`、`.config` 会被忽略，不应提交到仓库。
 
 ## 准备工作
 
@@ -89,96 +112,70 @@ flowchart LR
 
 ### uv 本地部署
 
-在源码目录中，可以使用 `uv` 和 Python 3.12 部署。
+推荐在源码目录中使用 `uv` 和 Python 3.12 运行本项目。
 
-可选：先 source 本地环境脚本，让虚拟环境、缓存、下载的模型和临时文件留在项目目录内（`.venv`、`.cache`、`.local`、`.tmp`）。
+1. 可选：让虚拟环境、uv 缓存、模型下载和临时文件都留在项目目录内。
 
-```bash
-source scripts/use-local-env.sh
-```
+    ```bash
+    source scripts/use-local-env.sh
+    ```
 
-只安装命令行：
+    该脚本会设置 `.venv`、`.cache`、`.local`、`.tmp` 等项目内路径。
 
-```bash
-uv python install 3.12
-uv sync
-```
+2. 使用 uv 安装 Python 3.12，然后同步基础环境。
 
-安装 WebUI：
+    ```bash
+    uv python install 3.12
+    uv sync
+    ```
 
-```bash
-uv sync --extra webui
-```
+3. 按需要添加 extra。每个功能使用一个 `--extra`，可以自由组合。
 
-如需包含 Qwen3-ASR：
+    | Extra | 功能 |
+    | :---- | :--- |
+    | `webui` | Gradio WebUI |
+    | `hf_asr` | HuggingFace ASR 后端 |
+    | `qwen_asr` | Qwen3-ASR 后端和 BitsAndBytes 量化支持 |
+    | `nemo_asr` | NVIDIA NeMo ASR 后端，包括 Parakeet |
+    | `firered_vad` | 通过 OmniVAD 使用 FireRedVAD |
 
-```bash
-# 只安装命令行
-uv sync --extra qwen_asr
+    只使用命令行并启用 Qwen3-ASR：
 
-# WebUI
-uv sync --extra webui --extra qwen_asr
-```
+    ```bash
+    uv sync --extra qwen_asr
+    ```
 
-如需包含用于 Parakeet 的 NVIDIA NeMo ASR：
+    安装所有 extras：
 
-```bash
-# 只安装命令行
-uv sync --extra nemo_asr
+    ```bash
+    uv sync --extra webui --extra hf_asr --extra qwen_asr --extra nemo_asr --extra firered_vad
+    ```
 
-# WebUI
-uv sync --extra webui --extra nemo_asr
-```
+4. 如果需要自定义 CUDA/PyTorch build，请先完成 `uv sync`，再根据显卡/CUDA 环境，从 [PyTorch 安装指南](https://pytorch.org/get-started/locally/) 安装或替换合适的 PyTorch build。
 
-如需包含通过 OmniVAD 提供的 FireRedVAD：
+    安装自定义 PyTorch 后，运行时请使用 `uv run --no-sync ...`，或直接调用 `.venv/bin/...`。以后需要再次同步依赖时，可以使用辅助脚本，让 uv 保留当前 torch/triton/CUDA runtime 包：
 
-```bash
-# 只安装命令行
-uv sync --extra firered_vad
+    ```bash
+    scripts/uv-sync-preserve-torch.sh --extra webui --extra nemo_asr
+    ```
 
-# WebUI
-uv sync --extra webui --extra firered_vad
-```
+5. 启动命令行工具或 WebUI。
 
-如果需要 CUDA，请先运行 `uv sync`，然后根据您的显卡/CUDA 环境，从 [PyTorch 安装指南](https://pytorch.org/get-started/locally/) 安装或替换兼容的 PyTorch build。安装自定义 PyTorch build 后，请直接运行虚拟环境里的入口，或使用 `uv run --no-sync ...`，避免 `uv` 在 exact sync 时替换它。
+    ```bash
+    uv run --no-sync stream-translator-gpt {网址}
+    uv run --no-sync stream-translator-gpt-webui
+    ```
 
-安装自定义 PyTorch 后，如需再次同步依赖，请使用辅助脚本保留当前 torch/triton/CUDA runtime：
+    如果已经执行过 `source scripts/use-local-env.sh`，虚拟环境会在 `PATH` 中，也可以直接运行：
 
-```bash
-scripts/uv-sync-preserve-torch.sh --extra webui --extra nemo_asr
-```
-
-启动命令行工具：
-
-```bash
-stream-translator-gpt
-# 或
-uv run --no-sync stream-translator-gpt
-```
-
-启动 WebUI：
-
-```bash
-stream-translator-gpt-webui
-# 或
-uv run --no-sync stream-translator-gpt-webui
-```
-
-### WebUI
-
-```
-pip install stream-translator-gpt[webui] -U
-```
-
-### 命令行
-
-```
-pip install stream-translator-gpt -U
-```
+    ```bash
+    stream-translator-gpt {网址}
+    stream-translator-gpt-webui
+    ```
 
 ## 使用方法
 
-Colab上的命令 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ionic-bond/stream-translator-gpt/blob/main/stream_translator.ipynb) 即为推荐的使用方式，以下是一些其他常用选项。
+Colab上的命令 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/W-Nana/stream-translator-gpt/blob/main/stream_translator.ipynb) 即为推荐的使用方式，以下是一些其他常用选项。
 
 - 转录直播流 (默认使用 **Whisper**):
 
@@ -200,31 +197,31 @@ Colab上的命令 [![Open In Colab](https://colab.research.google.com/assets/col
 
     ```stream-translator-gpt {网址} --language {输入语言} --use_openai_transcription_api --openai_api_key {您的 OpenAI 密钥}```
 
-- 使用 **HuggingFace ASR** 模型进行转录（需要先执行 `pip install stream-translator-gpt[hf_asr]`）：
+- 使用 **HuggingFace ASR** 模型进行转录（需要同步 `--extra hf_asr`）：
 
     ```stream-translator-gpt {网址} --model {hf_model_name} --use_hf_asr```
 
     仅支持在 Hugging Face Hub 上 `pipeline_tag` 为 `automatic-speech-recognition` 的模型。
 
-- 使用 **Qwen3-ASR** 进行转录（需要先执行 `pip install stream-translator-gpt[qwen_asr]`）：
+- 使用 **Qwen3-ASR** 进行转录（需要同步 `--extra qwen_asr`）：
 
     ```stream-translator-gpt {网址} --language {输入语言} --use_qwen3_asr --qwen3_asr_model Qwen/Qwen3-ASR-0.6B```
 
     使用 `--language auto` 可让 Qwen3-ASR 自动识别源语言。Qwen3-ASR 支持上游项目列出的 30 种语言（例如 `zh`、`en`、`ja`、`yue`、`fil`）。
     默认的 `--qwen3_asr_device_map auto` 需要当前 PyTorch 支持所选 CUDA 显卡；否则请安装兼容的 PyTorch，或显式选择其他 device map。
 
-- 使用 **NVIDIA Parakeet / NeMo ASR** 转录日语（需要先执行 `pip install stream-translator-gpt[nemo_asr]`）：
+- 使用 **NVIDIA Parakeet / NeMo ASR** 转录日语（需要同步 `--extra nemo_asr`）：
 
     ```stream-translator-gpt {网址} --language ja --use_nemo_asr --nemo_asr_model nvidia/parakeet-tdt_ctc-0.6b-ja```
 
     Parakeet 是基于 NeMo 的日语 ASR 模型，不是 Transformers pipeline 模型。请使用 `--use_nemo_asr`，不要使用 `--use_hf_asr`；TDT 解码是默认模式，也可以用 `--nemo_asr_decoding ctc` 作为 fallback/debug 模式。
     当 `--nemo_asr_device` 是 CUDA 设备时，checkpoint 会先在 CPU 上还原，再移动到 CUDA，以降低模型加载阶段的临时显存峰值。推理仍会在所选 CUDA 设备上运行。
 
-- 使用 **FireRedVAD** 进行音频切片（需要先执行 `pip install stream-translator-gpt[firered_vad]`）：
+- 使用 **FireRedVAD** 进行音频切片（需要同步 `--extra firered_vad`）：
 
     ```stream-translator-gpt {网址} --vad_backend firered```
 
-    FireRedVAD 通过 OmniVAD 的 CPU native runtime 提供，不会安装或锁定 PyTorch。默认使用 OmniVAD 内置的 FireRedVAD 模型，也可以通过 `--firered_vad_model_path` 指定自定义模型。
+    FireRedVAD 通过 OmniVAD 的 CPU native runtime 提供。默认使用 OmniVAD 内置的 FireRedVAD 模型，也可以通过 `--firered_vad_model_path` 指定自定义模型。
 
 ### ASR 模型预载
 
@@ -289,6 +286,8 @@ stream-translator-gpt {网址} --language {输入语言} --enable_subtitle_shari
 
 字幕共享服务器也会内置一个实时字幕查看页，可通过 `http://127.0.0.1:8765/` 或 `http://127.0.0.1:8765/live_subtitles.html` 打开。
 
+也可以配合 [W-Nana/SubtitleOverlay](https://github.com/W-Nana/SubtitleOverlay) 显示共享字幕。先在本项目开启字幕共享，然后在 SubtitleOverlay 中将翻译服务器地址设置为公开字幕服务器地址；同机可填 `http://127.0.0.1:8765`，局域网内其他设备可填 `http://192.168.1.100:8765` 这类实际主机地址。
+
 外部客户端可按以下顺序发现并消费实时字幕流：
 
 1. 在 WebUI 服务器，或 CLI 字幕共享端口请求 `GET /api/server/info`，读取 `public_host`、`public_port` 和 `enable_subtitle_sharing`。
@@ -323,7 +322,7 @@ SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数
 | `--continuous_no_speech_threshold`      | 1.0                            | 如果在此秒数内没有语音，则进行切片。如果启用了动态无语音阈值（默认启用），实际阈值将基于此值动态调整。                                                                    |
 | `--disable_dynamic_no_speech_threshold` |                                | 设置此标志以禁用动态静音阈值。                                                                                                                                            |
 | `--prefix_retention_length`             | 0.5                            | 切片时保留的前缀音频长度。                                                                                                                                                |
-| `--vad_backend`                         | silero                         | 音频切片使用的 VAD 后端：silero 或 firered。FireRedVAD 需要先执行 `pip install stream-translator-gpt[firered_vad]`。                                                      |
+| `--vad_backend`                         | silero                         | 音频切片使用的 VAD 后端：silero 或 firered。FireRedVAD 需要 `firered_vad` extra。                                                                                           |
 | `--firered_vad_model_path`              |                                | 可选的 OmniVAD FireRedVAD `.omnivad` 模型路径。留空时使用 OmniVAD 内置模型。                                                                                              |
 | `--vad_threshold`                       | 0.35                           | 范围 0~1。此值越高，语音判断越严格。如果启用了动态 VAD 阈值（默认启用），此阈值将根据输入语音的 VAD 结果动态调整。                                                        |
 | `--disable_dynamic_vad_threshold`       |                                | 设置此标志以禁用动态 VAD 阈值。                                                                                                                                           |
@@ -333,8 +332,8 @@ SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数
 | `--use_faster_whisper`                  |                                | 设置此标志以使用 Faster-Whisper 进行语音转文字，而不是原始的 OpenAI Whisper。如果与 --use_simul_streaming 一起使用，将使用以 Faster-Whisper 作为编码器的 SimulStreaming。 |
 | `--use_simul_streaming`                 |                                | 设置此标志以使用 SimulStreaming 进行语音转文字，而不是原始的 OpenAI Whisper。如果与 --use_faster_whisper 一起使用，将使用以 Faster-Whisper 作为编码器的 SimulStreaming。  |
 | `--use_openai_transcription_api`        |                                | 设置此标志以使用 OpenAI transcription API，而不是原始的本地 Whisper。                                                                                                     |
-| `--use_hf_asr`                          |                                | 设置此标志以使用 HuggingFace ASR 模型。通过 `--model` 指定模型 ID。需要先执行 `pip install stream-translator-gpt[hf_asr]`。                                               |
-| `--use_qwen3_asr`                       |                                | 设置此标志以使用 Qwen3-ASR。需要先执行 `pip install stream-translator-gpt[qwen_asr]`。                                                                                     |
+| `--use_hf_asr`                          |                                | 设置此标志以使用 HuggingFace ASR 模型。通过 `--model` 指定模型 ID。需要 `hf_asr` extra。                                                                                    |
+| `--use_qwen3_asr`                       |                                | 设置此标志以使用 Qwen3-ASR。需要 `qwen_asr` extra。                                                                                                                        |
 | `--qwen3_asr_model`                     | Qwen/Qwen3-ASR-0.6B            | Qwen3-ASR 模型名称，例如 Qwen/Qwen3-ASR-0.6B 或 Qwen/Qwen3-ASR-1.7B。                                                                                                      |
 | `--qwen3_asr_dtype`                     | bfloat16                       | 加载 Qwen3-ASR 时使用的 Torch dtype，例如 bfloat16、float16、float32。                                                                                                     |
 | `--qwen3_asr_device_map`                | auto                           | 加载 Qwen3-ASR 时使用的 device map，例如 auto、cuda:0、cpu。所选 CUDA 设备必须被当前 PyTorch build 支持。                                                                 |
@@ -342,7 +341,7 @@ SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数
 | `--qwen3_asr_quantization`              | none                           | Qwen3-ASR 量化模式：none、bnb_8bit 或 bnb_4bit。需要 `qwen_asr` extra 中的 bitsandbytes。                                                                                  |
 | `--qwen3_asr_bnb_4bit_quant_type`       | nf4                            | Qwen3-ASR BitsAndBytes 4-bit 量化类型：nf4 或 fp4。                                                                                                                       |
 | `--qwen3_asr_bnb_4bit_use_double_quant` |                                | 启用 Qwen3-ASR 4-bit nested/double quantization。                                                                                                                         |
-| `--use_nemo_asr`                        |                                | 设置此标志以使用 NVIDIA NeMo ASR。需要先执行 `pip install stream-translator-gpt[nemo_asr]`。                                                                               |
+| `--use_nemo_asr`                        |                                | 设置此标志以使用 NVIDIA NeMo ASR。需要 `nemo_asr` extra。                                                                                                                  |
 | `--nemo_asr_model`                      | nvidia/parakeet-tdt_ctc-0.6b-ja | NeMo ASR 模型名称。默认 Parakeet 模型偏向日语，并使用 NeMo，而不是 Transformers `--use_hf_asr` 后端。                                                                      |
 | `--nemo_asr_device`                     | auto                           | 运行 NeMo ASR 时使用的设备，例如 auto、cuda:0、cuda:1、cpu，或其他 PyTorch 接受的设备字符串。                                                                              |
 | `--nemo_asr_decoding`                   | tdt                            | Hybrid NeMo ASR 模型的解码模式：tdt 或 ctc。TDT 会保留模型默认 decoder，更适合目前这种短切片近实时流程。                                                                  |
@@ -374,7 +373,7 @@ SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数
 | `--hide_transcribe_result`              |                                | 隐藏 Whisper 转录的结果。                                                                                                                                                 |
 | `--output_file_path`                    |                                | 如果使用，将把结果文本保存到此路径。                                                                                                                                      |
 | `--cqhttp_url`                          |                                | 如果使用，将把结果文本发送到 cqhttp 服务器。                                                                                                                              |
-| `--cqhttp_token` code_snippet_pre       |                                | cqhttp 的 Token，如果服务器端未设置，则无需填写。                                                                                                                         |
+| `--cqhttp_token`                        |                                | cqhttp 的 Token，如果服务器端未设置，则无需填写。                                                                                                                         |
 | `--discord_webhook_url`                 |                                | 如果使用，将把结果文本发送到 Discord 频道。                                                                                                                               |
 | `--telegram_token`                      |                                | Telegram 机器人的 Token。                                                                                                                                                 |
 | `--telegram_chat_id`                    |                                | 如果使用，将把结果文本发送到此 Telegram 聊天。需要与 \"--telegram_token\" 配合使用。                                                                                      |
@@ -382,11 +381,3 @@ SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数
 | `--enable_subtitle_sharing`             |                                | 从 CLI 进程启动公开 SSE 字幕共享服务器。                                                                                                                                  |
 | `--subtitle_share_host`                 | 0.0.0.0                        | 字幕共享服务器绑定的 Host/IP。使用 0.0.0.0 可监听所有网卡。                                                                                                                |
 | `--subtitle_share_public_port`          | 8765                           | 与 `--enable_subtitle_sharing` 搭配使用的公开字幕共享端口。                                                                                                                |
-
-## 联系我
-
-Telegram: [@ionic_bond](https://t.me/ionic_bond)
-
-## 捐赠
-
-[PayPal Donate](https://www.paypal.com/donate/?hosted_button_id=D5DRBK9BL6DUA) 或 [PayPal](https://paypal.me/ionicbond3)
