@@ -64,6 +64,7 @@
     "retry_on_failure": "失敗時に再試行",
     "output": "出力",
     "output_timestamps": "タイムスタンプを出力",
+    "show_latency_log": "ログに遅延を表示",
     "hide_transcription_result": "文字起こし結果を隠す",
     "save_to_file_path": "ファイル保存パス",
     "save_to_file_path_ph": "設定した場合、結果のテキストがこのパスに保存されます。",

@@ -50,6 +50,7 @@
     "use_json_result": false,
     "retry_if_translation_fails": false,
     "show_timestamps": false,
+    "show_latency_log": false,
     "hide_transcription": false,
     "output_file": "",
     "output_proxy": "",

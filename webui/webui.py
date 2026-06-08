@@ -93,9 +93,9 @@ INPUT_KEYS = [
     "filter_japanese_stream",
     "disable_transcription_context", "transcription_initial_prompt", "translation_prompt", "translation_provider",
     "gpt_model", "gemini_model", "history_size", "translation_timeout", "processing_proxy", "use_json_result",
-    "retry_if_translation_fails", "show_timestamps", "hide_transcription", "output_file", "output_proxy", "cqhttp_url",
-    "cqhttp_token", "discord_hook", "telegram_token", "telegram_chat_id", "enable_subtitle_sharing", "public_host",
-    "public_port", "extra_cli_args"
+    "retry_if_translation_fails", "show_timestamps", "show_latency_log", "hide_transcription", "output_file",
+    "output_proxy", "cqhttp_url", "cqhttp_token", "discord_hook", "telegram_token", "telegram_chat_id",
+    "enable_subtitle_sharing", "public_host", "public_port", "extra_cli_args"
 ]
 
 
@@ -353,6 +353,7 @@ def build_translator_command(
         use_json_result,
         retry_if_translation_fails,
         show_timestamps,
+        show_latency_log,
         hide_transcription,
         output_file,
         output_proxy,
@@ -521,6 +522,8 @@ def build_translator_command(
     # --- Output ---
     if show_timestamps:
         cmd.append("--output_timestamps")
+    if show_latency_log:
+        cmd.append("--show_latency_log")
     if hide_transcription:
         cmd.append("--hide_transcribe_result")
     if output_file:
@@ -643,6 +646,7 @@ def run_translator(
         retry_if_translation_fails,
         # Output
         show_timestamps,
+        show_latency_log,
         hide_transcription,
         output_file,
         output_proxy,
@@ -738,6 +742,7 @@ def run_translator(
                                           use_json_result=use_json_result,
                                           retry_if_translation_fails=retry_if_translation_fails,
                                           show_timestamps=show_timestamps,
+                                          show_latency_log=show_latency_log,
                                           hide_transcription=hide_transcription,
                                           output_file=output_file,
                                           output_proxy=output_proxy,
@@ -1074,6 +1079,8 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
         with gr.Tab(i18n.get("output")):
             with gr.Row():
                 show_timestamps = gr.Checkbox(label=i18n.get("output_timestamps"), value=get_default("show_timestamps"))
+                show_latency_log = gr.Checkbox(label=i18n.get("show_latency_log"),
+                                               value=get_default("show_latency_log"))
                 hide_transcription = gr.Checkbox(label=i18n.get("hide_transcription_result"),
                                                  value=get_default("hide_transcription"))
 
@@ -1256,8 +1263,8 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                         disable_transcription_context, transcription_initial_prompt,
                         translation_prompt, translation_provider, gpt_model, gemini_model, history_size,
                         translation_timeout, openai_base_url, google_base_url, processing_proxy, use_json_result,
-                        retry_if_translation_fails, show_timestamps, hide_transcription, output_file, output_proxy,
-                        cqhttp_url, cqhttp_token, discord_hook, telegram_token, telegram_chat_id,
+                        retry_if_translation_fails, show_timestamps, show_latency_log, hide_transcription, output_file,
+                        output_proxy, cqhttp_url, cqhttp_token, discord_hook, telegram_token, telegram_chat_id,
                         enable_subtitle_sharing, public_host, public_port, extra_cli_args
                     ],
                     outputs=output_box,

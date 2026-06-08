@@ -259,13 +259,15 @@ For command-line runs, add `--enable_subtitle_sharing` to start the same SSE sub
 stream-translator-gpt {URL} --language {input_language} --enable_subtitle_sharing --subtitle_share_host 0.0.0.0 --subtitle_share_public_port 8765
 ```
 
+The subtitle sharing server also serves a built-in live subtitle viewer at `http://127.0.0.1:8765/` and `http://127.0.0.1:8765/live_subtitles.html`.
+
 External clients can then discover and consume the live subtitle stream with:
 
 1. `GET /api/server/info` on the WebUI server, or on the CLI subtitle sharing port, to read `public_host`, `public_port`, and `enable_subtitle_sharing`.
 2. `GET /api/translation/active-task` on the public subtitle port to read the current `task_id`.
 3. `GET /api/translation/stream/{task_id}` on the public subtitle port to receive `text/event-stream` events.
 
-The SSE stream emits `subtitle`, `status`, heartbeat comments, and `error` events. Subtitle data contains `timestamp`, `original`, and `translated`.
+The SSE stream emits `subtitle`, `status`, heartbeat comments, and `error` events. Subtitle data contains `timestamp`, `original`, `translated`, `asr_latency_ms`, and `llm_latency_ms`. `llm_latency_ms` is `null` when translation is disabled or has not run for that subtitle.
 
 ### All options
 
@@ -336,6 +338,7 @@ The SSE stream emits `subtitle`, `status`, heartbeat comments, and `error` event
 | `--processing_proxy`                    |                                | Use the specified HTTP/HTTPS/SOCKS proxy for Whisper/GPT API (Gemini currently doesn't support specifying a proxy within the program), e.g. http://127.0.0.1:7890.                                                 |
 | **Output Options**                      |
 | `--output_timestamps`                   |                                | Output the timestamp of the text when outputting the text.                                                                                                                                                         |
+| `--show_latency_log`                    |                                | Print ASR and LLM latency in milliseconds in terminal logs.                                                                                                                                                        |
 | `--hide_transcribe_result`              |                                | Hide the result of Whisper transcribe.                                                                                                                                                                             |
 | `--output_file_path`                    |                                | If set, will save the result text to this path.                                                                                                                                                                    |
 | `--cqhttp_url`                          |                                | If set, will send the result text to the cqhttp server.                                                                                                                                                            |

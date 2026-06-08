@@ -20,12 +20,29 @@ def normalize_subtitle_share_push_url(url: str | None) -> str | None:
     return urlunparse(parsed._replace(netloc=netloc))
 
 
+def _format_latency_ms(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return round(value, 1)
+
+
+def _format_latency_log(task: TranslationTask) -> str:
+    parts = []
+    if task.asr_latency_ms is not None:
+        parts.append(f"ASR {task.asr_latency_ms:.0f}ms")
+    if task.llm_latency_ms is not None:
+        parts.append(f"LLM {task.llm_latency_ms:.0f}ms")
+    if not parts:
+        return ""
+    return f" [Latency: {' | '.join(parts)}]"
+
+
 class ResultExporter(LoopWorkerBase):
 
     def __init__(self, cqhttp_url: str, cqhttp_token: str, discord_webhook_url: str, telegram_token: str,
                  telegram_chat_id: int, output_file_path: str, proxy: str, output_whisper_result: bool,
                  output_timestamps: bool, subtitle_share_push_url: str | None = None,
-                 subtitle_share_token: str | None = None) -> None:
+                 subtitle_share_token: str | None = None, show_latency_log: bool = False) -> None:
         self.proxies = {"http": proxy, "https": proxy} if proxy else None
         self.cqhttp_queue = None
         self.discord_queue = None
@@ -36,6 +53,7 @@ class ResultExporter(LoopWorkerBase):
         self.subtitle_share_token = subtitle_share_token
         self.output_whisper_result = output_whisper_result
         self.output_timestamps = output_timestamps
+        self.show_latency_log = show_latency_log
         if subtitle_share_push_url and self.subtitle_share_push_url != subtitle_share_push_url:
             print(f"{WARNING}Replaced subtitle share push host with 127.0.0.1: {self.subtitle_share_push_url}")
 
@@ -137,13 +155,20 @@ class ResultExporter(LoopWorkerBase):
             text_to_send = (task.transcript + '\n') if self.output_whisper_result else ''
             if self.output_timestamps:
                 text_to_send = timestamp_text + '\n' + text_to_send
+            latency_log = _format_latency_log(task) if self.show_latency_log else ""
             if task.translation:
                 text_to_print = task.translation
                 if self.output_timestamps:
                     text_to_print = timestamp_text + ' ' + text_to_print
+                text_to_print += latency_log
                 text_to_print = text_to_print.strip()
                 print(f'{BOLD}{text_to_print}{ENDC}')
                 text_to_send += task.translation
+            elif latency_log:
+                text_to_print = latency_log.strip()
+                if self.output_timestamps:
+                    text_to_print = timestamp_text + ' ' + text_to_print
+                print(text_to_print)
             text_to_send = text_to_send.strip()
             if self.cqhttp_queue:
                 self.cqhttp_queue.put(text_to_send)
@@ -163,5 +188,7 @@ class ResultExporter(LoopWorkerBase):
                         "timestamp": subtitle_timestamp,
                         "original": task.transcript or "",
                         "translated": task.translation or "",
+                        "asr_latency_ms": _format_latency_ms(task.asr_latency_ms),
+                        "llm_latency_ms": _format_latency_ms(task.llm_latency_ms),
                     },
                 })

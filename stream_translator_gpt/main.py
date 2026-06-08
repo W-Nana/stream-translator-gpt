@@ -35,8 +35,9 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
          transcription_initial_prompt, gpt_model, gemini_model, translation_prompt, translation_history_size,
          translation_timeout, use_json_result, retry_if_translation_fails, temperature, top_p, top_k,
          prompt_cache_key, reasoning_effort, verbosity, service_tier, debug_mode, processing_proxy, output_timestamps,
-         hide_transcribe_result, output_file_path, cqhttp_url, cqhttp_token, discord_webhook_url, telegram_token,
-         telegram_chat_id, output_proxy, enable_subtitle_sharing, subtitle_share_public_port, subtitle_share_host):
+         show_latency_log, hide_transcribe_result, output_file_path, cqhttp_url, cqhttp_token, discord_webhook_url,
+         telegram_token, telegram_chat_id, output_proxy, enable_subtitle_sharing, subtitle_share_public_port,
+         subtitle_share_host):
     if openai_base_url:
         os.environ['OPENAI_BASE_URL'] = openai_base_url
 
@@ -74,6 +75,7 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
         print(f'{INFO}Subtitle sharing server started on {subtitle_share_host}:{managed_subtitle_share_server.port}')
         print(f'{INFO}Subtitle sharing task ID: {subtitle_task_id}')
         print(f'{INFO}Subtitle sharing API: http://127.0.0.1:{managed_subtitle_share_server.port}/api/server/info')
+        print(f'{INFO}Live subtitles page: http://127.0.0.1:{managed_subtitle_share_server.port}/')
 
     # Init workers
     with ThreadPoolExecutor() as executor:
@@ -196,6 +198,7 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
             proxy=output_proxy,
             output_whisper_result=not hide_transcribe_result,
             output_timestamps=output_timestamps,
+            show_latency_log=show_latency_log,
             subtitle_share_push_url=subtitle_share_push_url,
             subtitle_share_token=subtitle_share_token,
         )
@@ -540,6 +543,9 @@ def cli():
     parser.add_argument('--output_timestamps',
                         action='store_true',
                         help='Output the timestamp of the text when outputting the text.')
+    parser.add_argument('--show_latency_log',
+                        action='store_true',
+                        help='Print ASR and LLM latency in terminal logs.')
     parser.add_argument('--hide_transcribe_result', action='store_true', help='Hide the result of Whisper transcribe.')
     parser.add_argument('--output_file_path',
                         type=str,

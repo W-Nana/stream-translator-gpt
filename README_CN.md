@@ -259,13 +259,15 @@ Colab上的命令 [![Open In Colab](https://colab.research.google.com/assets/col
 stream-translator-gpt {网址} --language {输入语言} --enable_subtitle_sharing --subtitle_share_host 0.0.0.0 --subtitle_share_public_port 8765
 ```
 
+字幕共享服务器也会内置一个实时字幕查看页，可通过 `http://127.0.0.1:8765/` 或 `http://127.0.0.1:8765/live_subtitles.html` 打开。
+
 外部客户端可按以下顺序发现并消费实时字幕流：
 
 1. 在 WebUI 服务器，或 CLI 字幕共享端口请求 `GET /api/server/info`，读取 `public_host`、`public_port` 和 `enable_subtitle_sharing`。
 2. 在公开字幕端口请求 `GET /api/translation/active-task`，读取当前 `task_id`。
 3. 在公开字幕端口请求 `GET /api/translation/stream/{task_id}`，以 `text/event-stream` 接收 SSE。
 
-SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数据包含 `timestamp`、`original`、`translated`。
+SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数据包含 `timestamp`、`original`、`translated`、`asr_latency_ms`、`llm_latency_ms`。未启用翻译或该字幕未执行翻译时，`llm_latency_ms` 为 `null`。
 
 ### 所有选项
 
@@ -336,6 +338,7 @@ SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数
 | `--processing_proxy`                    |                                | 为 Whisper/GPT API 使用指定的 HTTP/HTTPS/SOCKS 代理 (Gemini 目前不支持在程序内指定代理)，例如 http://127.0.0.1:7890。                                                     |
 | **输出选项**                            |
 | `--output_timestamps`                   |                                | 输出文本时，同时输出文本的时间戳。                                                                                                                                        |
+| `--show_latency_log`                    |                                | 在终端日志中以毫秒显示 ASR 和 LLM 延迟。                                                                                                                                 |
 | `--hide_transcribe_result`              |                                | 隐藏 Whisper 转录的结果。                                                                                                                                                 |
 | `--output_file_path`                    |                                | 如果使用，将把结果文本保存到此路径。                                                                                                                                      |
 | `--cqhttp_url`                          |                                | 如果使用，将把结果文本发送到 cqhttp 服务器。                                                                                                                              |

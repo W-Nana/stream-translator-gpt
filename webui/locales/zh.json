@@ -64,6 +64,7 @@
     "retry_on_failure": "失败重试",
     "output": "输出",
     "output_timestamps": "输出时间戳",
+    "show_latency_log": "在日志中显示延迟",
     "hide_transcription_result": "隐藏语音转文字结果",
     "save_to_file_path": "保存到文件路径",
     "save_to_file_path_ph": "如果设置，将保存结果文本到此路径。",

@@ -7,6 +7,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib import resources
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 from uuid import uuid4
@@ -16,10 +17,20 @@ DEFAULT_PUBLIC_PORT = 8765
 DEFAULT_PUBLIC_HOST = "0.0.0.0"
 PING_INTERVAL_SECONDS = 15
 MAX_HISTORY_EVENTS = 200
+LIVE_SUBTITLES_PAGE_PATHS = {"/", "/live_subtitles.html"}
+_LIVE_SUBTITLES_HTML: bytes | None = None
 
 
 def create_task_id() -> str:
     return uuid4().hex
+
+
+def _load_live_subtitles_html() -> bytes:
+    global _LIVE_SUBTITLES_HTML
+    if _LIVE_SUBTITLES_HTML is None:
+        html_path = resources.files("stream_translator_gpt").joinpath("assets/live_subtitles.html")
+        _LIVE_SUBTITLES_HTML = html_path.read_bytes()
+    return _LIVE_SUBTITLES_HTML
 
 
 def format_srt_timestamp(second: float) -> str:
@@ -242,6 +253,9 @@ class SubtitleShareRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path in LIVE_SUBTITLES_PAGE_PATHS:
+            self._handle_live_subtitles_page()
+            return
         if parsed.path == "/api/server/info":
             self._handle_server_info()
             return
@@ -298,6 +312,20 @@ class SubtitleShareRequestHandler(BaseHTTPRequestHandler):
 
     def _handle_server_info(self) -> None:
         self._send_json(HTTPStatus.OK, self.share_server.server_info_payload())
+
+    def _handle_live_subtitles_page(self) -> None:
+        try:
+            body = _load_live_subtitles_html()
+        except FileNotFoundError:
+            self._send_json(HTTPStatus.NOT_FOUND, {"message": "Live subtitle page not found"})
+            return
+        self.send_response(HTTPStatus.OK)
+        self._send_cors_headers()
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _handle_active_task(self) -> None:
         if not self.share_server.enabled:

@@ -64,6 +64,7 @@
     "retry_on_failure": "Retry on Failure",
     "output": "Output",
     "output_timestamps": "Output Timestamps",
+    "show_latency_log": "Show Latency in Log",
     "hide_transcription_result": "Hide Transcription Result",
     "save_to_file_path": "Save to File Path",
     "save_to_file_path_ph": "If set, will save the result text to this path.",

@@ -108,6 +108,14 @@ class LLMTranslator(LoopWorkerBase):
     def translate(self, translation_task: TranslationTask):
         pass
 
+    def _translate_with_latency(self, translation_task: TranslationTask):
+        llm_started_at = time.perf_counter()
+        translation_task._llm_latency_started_at = llm_started_at
+        try:
+            self.translate(translation_task)
+        finally:
+            translation_task.llm_latency_ms = (time.perf_counter() - llm_started_at) * 1000
+
     def _prepare_context(self, task: TranslationTask):
         if self.recent_transcripts is not None:
             task.context_transcripts = list(self.recent_transcripts)
@@ -117,14 +125,20 @@ class LLMTranslator(LoopWorkerBase):
         if not translation_task.start_time:
             translation_task.start_time = datetime.now(timezone.utc)
         translation_task.translation_failed = False
-        thread = threading.Thread(target=self.translate, args=(translation_task,))
+        translation_task.llm_latency_ms = None
+        thread = threading.Thread(target=self._translate_with_latency, args=(translation_task,))
         thread.daemon = True
         thread.start()
+
+    def _mark_timeout_latency(self, task: TranslationTask):
+        if task.llm_latency_ms is None and task._llm_latency_started_at is not None:
+            task.llm_latency_ms = (time.perf_counter() - task._llm_latency_started_at) * 1000
 
     def _retrigger_failed_tasks(self):
         now = datetime.now(timezone.utc)
         for task in self.processing_queue:
-            if task.translation_failed and not _is_task_timeout(task, self.timeout):
+            if task.translation_failed and task.llm_latency_ms is not None and not _is_task_timeout(
+                    task, self.timeout):
                 next_retry_time = getattr(task, 'next_retry_time', None)
                 if next_retry_time is not None and now < next_retry_time:
                     continue
@@ -137,11 +151,14 @@ class LLMTranslator(LoopWorkerBase):
     def _get_results(self):
         results = []
         while self.processing_queue and (
-                self.processing_queue[0].translation or _is_task_timeout(self.processing_queue[0], self.timeout) or
-            (self.processing_queue[0].translation_failed and not self.retry_if_translation_fails)):
+                (self.processing_queue[0].translation and self.processing_queue[0].llm_latency_ms is not None)
+                or _is_task_timeout(self.processing_queue[0], self.timeout) or
+            (self.processing_queue[0].translation_failed and self.processing_queue[0].llm_latency_ms is not None
+             and not self.retry_if_translation_fails)):
             task = self.processing_queue.popleft()
             if not task.translation:
                 if _is_task_timeout(task, self.timeout):
+                    self._mark_timeout_latency(task)
                     print(f'Translation timeout: {task.transcript}')
                 else:
                     print(f'Translation failed: {task.transcript}')

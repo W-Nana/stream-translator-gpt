@@ -68,5 +68,5 @@ Issues = "https://github.com/ionic-bond/stream-translator-gpt/issues"
 where = ["."]
 
 [tool.setuptools.package-data]
-stream_translator_gpt = ["*.jit", "**/*.tiktoken", "**/*.npz"]
+stream_translator_gpt = ["*.jit", "**/*.tiktoken", "**/*.npz", "assets/*.html"]
 webui = ["*.json", "locales/*.json"]
