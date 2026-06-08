@@ -7,6 +7,7 @@ import signal
 import sys
 import time
 import subprocess
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 if __name__ == '__main__':
@@ -21,6 +22,8 @@ from .audio_transcriber import (OpenaiWhisper, FasterWhisper, SimulStreaming, Re
 from .llm_translator import GPTTranslator, GeminiTranslator
 from .result_exporter import ResultExporter
 from .subtitle_sharing import DEFAULT_PUBLIC_HOST, DEFAULT_PUBLIC_PORT, SubtitleShareServer, create_task_id
+from .asr_preload import PreloadedTranscriberManager, build_asr_config
+from .pipeline_runner import PipelineController, run_inprocess_pipeline
 from . import __version__
 
 
@@ -247,6 +250,105 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
                 time.sleep(0.2)
             managed_subtitle_share_server.stop()
     print(f'{INFO}All processing completed, program exits.')
+
+
+def _start_subtitle_share_server(host: str, port: int):
+    server = SubtitleShareServer(host=host, port=port, enabled=True)
+    server.start()
+    print(f'{INFO}Subtitle sharing server started on {host}:{server.port}')
+    print(f'{INFO}Subtitle sharing API: http://127.0.0.1:{server.port}/api/server/info')
+    print(f'{INFO}Live subtitles page: http://127.0.0.1:{server.port}/')
+    return server
+
+
+def _run_preloaded_task(url: str, args: dict, manager: PreloadedTranscriberManager,
+                        share_server: SubtitleShareServer | None = None) -> int:
+    config = build_asr_config(args)
+    transcriber = manager.get_for_run(config)
+    controller = PipelineController()
+    result = {"code": 0, "error": None}
+    local_share_server = None
+    task_id = None
+    push_url = None
+    push_token = None
+
+    try:
+        active_share_server = share_server
+        if active_share_server is None and args.get("enable_subtitle_sharing"):
+            active_share_server = _start_subtitle_share_server(args.get("subtitle_share_host"),
+                                                               args.get("subtitle_share_public_port"))
+            local_share_server = active_share_server
+
+        if active_share_server is not None:
+            task_id = create_task_id()
+            active_share_server.begin_task(task_id, os.getpid())
+            push_url = f'http://127.0.0.1:{active_share_server.port}/api/translation/push/{task_id}'
+            push_token = active_share_server.push_token
+            print(f'{INFO}Subtitle sharing task ID: {task_id}')
+
+        def worker():
+            try:
+                result["code"] = run_inprocess_pipeline(url,
+                                                        args,
+                                                        transcriber,
+                                                        controller=controller,
+                                                        subtitle_share_push_url=push_url,
+                                                        subtitle_share_token=push_token)
+            except Exception as e:
+                result["error"] = e
+                result["code"] = 1
+
+        thread = threading.Thread(target=worker)
+        thread.daemon = True
+        thread.start()
+        while thread.is_alive():
+            try:
+                thread.join(timeout=0.2)
+            except KeyboardInterrupt:
+                print(f'{WARNING}Stopping current task. The preloaded ASR model will stay loaded.')
+                controller.request_stop()
+        if result["error"] is not None:
+            raise result["error"]
+        return int(result["code"] or 0)
+    finally:
+        if share_server is not None and task_id:
+            share_server.finish_task(task_id, result["code"])
+        if local_share_server is not None:
+            if task_id:
+                local_share_server.finish_task(task_id, result["code"])
+                time.sleep(0.2)
+            local_share_server.stop()
+        manager.release()
+
+
+def run_preloaded_cli(url: str, args: dict) -> None:
+    manager = PreloadedTranscriberManager()
+    config = build_asr_config(args)
+    print(manager.preload(config))
+
+    keep_loaded = bool(args.get("keep_asr_loaded"))
+    share_server = None
+    try:
+        if keep_loaded and args.get("enable_subtitle_sharing"):
+            share_server = _start_subtitle_share_server(args.get("subtitle_share_host"),
+                                                        args.get("subtitle_share_public_port"))
+
+        next_url = url
+        while next_url:
+            _run_preloaded_task(next_url, args, manager, share_server=share_server)
+            if not keep_loaded:
+                break
+            try:
+                next_url = input("Next URL> ").strip()
+            except KeyboardInterrupt:
+                print()
+                break
+            if not next_url or next_url.lower() == "exit":
+                break
+    finally:
+        if share_server is not None:
+            share_server.stop()
+        print(manager.unload())
 
 
 def cli():
@@ -585,6 +687,12 @@ def cli():
                         type=str,
                         default=DEFAULT_PUBLIC_HOST,
                         help='Host/IP to bind the subtitle sharing server. Defaults to 0.0.0.0.')
+    parser.add_argument('--preload_asr_model',
+                        action='store_true',
+                        help='Preload the selected local ASR model before running.')
+    parser.add_argument('--keep_asr_loaded',
+                        action='store_true',
+                        help='Keep the preloaded ASR model loaded and prompt for the next URL after each task.')
 
     args = parser.parse_args().__dict__
 
@@ -689,6 +797,14 @@ def cli():
         print(f'{ERROR}Please fill in the OpenAI API key when enabling OpenAI Transcription API')
         sys.exit(1)
 
+    if args['keep_asr_loaded'] and not args['preload_asr_model']:
+        print(f'{ERROR}--keep_asr_loaded requires --preload_asr_model')
+        sys.exit(1)
+
+    if args['preload_asr_model'] and args['use_openai_transcription_api']:
+        print(f'{ERROR}OpenAI Transcription API is remote and does not need ASR preloading')
+        sys.exit(1)
+
     if args['translation_prompt'] and not (args['openai_api_key'] or args['google_api_key']):
         print(f'{ERROR}Please fill in the OpenAI / Google API key when enabling LLM translation')
         sys.exit(1)
@@ -730,6 +846,13 @@ def cli():
         if not os.path.isdir(output_dir):
             print(f'{ERROR}Output directory does not exist: {output_dir}')
             sys.exit(1)
+
+    preload_asr_model = args.pop('preload_asr_model', False)
+    keep_asr_loaded = args.pop('keep_asr_loaded', False)
+    if preload_asr_model:
+        args['keep_asr_loaded'] = keep_asr_loaded
+        run_preloaded_cli(url, args)
+        return
 
     main(url, **args)
 

@@ -51,6 +51,10 @@ class AudioTranscriber(LoopWorkerBase):
         """Override in subclass to reset model context when repetition is detected."""
         pass
 
+    def prepare_for_reuse(self):
+        """Reset per-run state before reusing a preloaded transcriber."""
+        self.reset_context()
+
     def loop(self, input_queue: queue.SimpleQueue[TranslationTask], output_queue: queue.SimpleQueue[TranslationTask]):
         previous_text = ""
 
@@ -210,6 +214,9 @@ class SimulStreaming(AudioTranscriber):
     def reset_context(self):
         self.asr_online.model.refresh_segment(complete=True)
         self.asr_online.unicode_buffer = []
+
+    def prepare_for_reuse(self):
+        self.asr_online.init()
 
 
 class RemoteOpenaiTranscriber(AudioTranscriber):

@@ -210,6 +210,18 @@ Colab上的命令 [![Open In Colab](https://colab.research.google.com/assets/col
     Parakeet 是基于 NeMo 的日语 ASR 模型，不是 Transformers pipeline 模型。请使用 `--use_nemo_asr`，不要使用 `--use_hf_asr`；TDT 解码是默认模式，也可以用 `--nemo_asr_decoding ctc` 作为 fallback/debug 模式。
     当 `--nemo_asr_device` 是 CUDA 设备时，checkpoint 会先在 CPU 上还原，再移动到 CUDA，以降低模型加载阶段的临时显存峰值。推理仍会在所选 CUDA 设备上运行。
 
+### ASR 模型预载
+
+如果需要连续运行本地 ASR，可以添加 `--preload_asr_model`，先加载当前选择的 ASR 后端再开始任务。再加 `--keep_asr_loaded` 时，第一个 URL 结束后模型会继续常驻，CLI 会显示 `Next URL>`；输入新的 URL 可继续运行，空行或 `exit` 会卸载模型并退出。
+
+```bash
+stream-translator-gpt {网址} --language ja --use_nemo_asr --preload_asr_model --keep_asr_loaded
+```
+
+CLI 常驻模式下，任务执行中按 Ctrl+C 只会停止当前任务并回到 `Next URL>`；在提示符状态按 Ctrl+C 会退出并卸载模型。如果同时开启 `--enable_subtitle_sharing` 和 `--keep_asr_loaded`，字幕共享服务器会保持同一个端口常驻，每个新 URL 会生成新的 `task_id`。
+
+WebUI 的「语音转文字」页提供 `Preload ASR Model` 和 `Unload ASR Model`。只有当前 ASR 设置与已预载模型匹配时才会复用；如果 backend/model/device/quantization 或相关 ASR 设置改变，运行会被阻止，需重新预载或卸载。OpenAI Transcription API 是远端服务，不需要预载。
+
 - 使用 **Gemini** 翻译成其他语言:
 
     ```stream-translator-gpt {网址} --language ja --translation_prompt "翻译以下日语为中文，只输出译文，不要输出原文，在一行内输出" --google_api_key {您的 Google 密钥}```
@@ -319,6 +331,8 @@ SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数
 | `--transcription_filters`               | emoji_filter,repetition_filter | 应用于语音转文字结果的过滤器，用 "," 分隔。我们提供 emoji_filter、repetition_filter 和 japanese_stream_filter。                                                           |
 | `--transcription_initial_prompt`        |                                | 通用的转录固定提示词/术语表。格式："提示词1, 提示词2, ..."。此文本将始终包含在传递给模型的提示词中。                                                                      |
 | `--disable_transcription_context`       |                                | 设置此标志以禁用转录中的上下文（上一句）传递。                                                                                                                            |
+| `--preload_asr_model`                   |                                | 运行前预载当前选择的本地 ASR 后端。OpenAI Transcription API 是远端服务，不需要预载。                                                                                       |
+| `--keep_asr_loaded`                     |                                | 每个任务结束后保留已预载的 ASR 模型，并提示输入下一个 URL。需要搭配 `--preload_asr_model`。                                                                                |
 | **翻译选项**                            |
 | `--gpt_model`                           | gpt-5.4-nano                   | OpenAI 的 GPT 模型名称，gpt-5.4 / gpt-5.4-mini / gpt-5.4-nano / gpt-5.5                                                                                                   |
 | `--gemini_model`                        | gemini-3.1-flash-lite          | Google 的 Gemini 模型名称，gemini-2.5-flash / gemini-2.5-flash-lite / gemini-3-flash-preview / gemini-3.1-flash-lite / gemini-3.5-flash                                   |

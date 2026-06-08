@@ -77,11 +77,14 @@ class StreamAudioGetter(LoopWorkerBase):
         if hasattr(self, 'temp_dir') and os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def _exit_handler(self, signum, frame):
+    def stop(self):
         if self.ffmpeg_process:
             self.ffmpeg_process.kill()
         if self.ytdlp_process:
             self.ytdlp_process.kill()
+
+    def _exit_handler(self, signum, frame):
+        self.stop()
         if hasattr(self, 'temp_dir') and os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir, ignore_errors=True)
         sys.exit(0)
@@ -107,9 +110,12 @@ class LocalFileAudioGetter(LoopWorkerBase):
         self.ffmpeg_process = None
         self.byte_size = round(SAMPLES_PER_FRAME * 4)  # Factor 4 comes from float32 (4 bytes per sample)
 
-    def _exit_handler(self, signum, frame):
+    def stop(self):
         if self.ffmpeg_process:
             self.ffmpeg_process.kill()
+
+    def _exit_handler(self, signum, frame):
+        self.stop()
         sys.exit(0)
 
     def loop(self, output_queue: queue.SimpleQueue[np.array]):
@@ -187,10 +193,14 @@ class DeviceAudioGetter(LoopWorkerBase):
 
         self.device_name = self.pyaudio.get_device_info_by_index(self.device_index)['name']
 
-    def _exit_handler(self, signum, frame):
+    def stop(self):
         if self.stream:
             self.stream.stop_stream()
             self.stream.close()
+            self.stream = None
+
+    def _exit_handler(self, signum, frame):
+        self.stop()
         self.pyaudio.terminate()
         sys.exit(0)
 
@@ -237,8 +247,6 @@ class DeviceAudioGetter(LoopWorkerBase):
         except Exception as e:
             print(f'{WARNING}Audio recording error: {e}')
         finally:
-            if self.stream:
-                self.stream.stop_stream()
-                self.stream.close()
+            self.stop()
             self.pyaudio.terminate()
         output_queue.put(None)

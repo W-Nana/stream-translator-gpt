@@ -1,8 +1,10 @@
 # This file is written by Gemini
 import argparse
 import atexit
+import contextlib
 import json
 import os
+import queue
 import re
 import shlex
 import signal
@@ -16,7 +18,10 @@ import platformdirs
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from stream_translator_gpt import __version__
-from stream_translator_gpt.subtitle_sharing import DEFAULT_PUBLIC_HOST, DEFAULT_PUBLIC_PORT, SubtitleShareServer
+from stream_translator_gpt.asr_preload import PreloadedTranscriberManager, build_asr_config
+from stream_translator_gpt.pipeline_runner import PipelineController, run_inprocess_pipeline
+from stream_translator_gpt.subtitle_sharing import (DEFAULT_PUBLIC_HOST, DEFAULT_PUBLIC_PORT, SubtitleShareServer,
+                                                   create_task_id)
 
 
 class I18n:
@@ -68,7 +73,9 @@ class I18n:
 # Global state for process management
 process = None
 is_running = False
+inprocess_controller = None
 subtitle_share_server = SubtitleShareServer(port=DEFAULT_PUBLIC_PORT, enabled=False)
+preloaded_asr_manager = PreloadedTranscriberManager()
 server_info_route_attached = False
 
 # Bundled default.json location (read-only, shipped with package)
@@ -202,7 +209,7 @@ def delete_preset_data(preset_name):
 
 
 def cleanup():
-    global process, is_running
+    global process, is_running, inprocess_controller
     if process and process.poll() is None:
         print("Terminating subprocess...")
         process.terminate()
@@ -210,6 +217,9 @@ def cleanup():
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             process.kill()
+    if inprocess_controller is not None:
+        inprocess_controller.request_stop()
+        inprocess_controller = None
     is_running = False
     subtitle_share_server.stop()
 
@@ -589,6 +599,314 @@ def format_command_for_log(cmd):
     return subprocess.list2cmdline(log_cmd)
 
 
+def clean_optional(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+        return value or None
+    return value
+
+
+def int_optional(value):
+    value = clean_optional(value)
+    if value is None:
+        return None
+    return int(value)
+
+
+def build_asr_options_from_values(model_size, language, whisper_backend, openai_transcription_model, hf_model_name,
+                                  qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map,
+                                  qwen3_asr_max_new_tokens, qwen3_asr_quantization,
+                                  qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant,
+                                  nemo_asr_model, nemo_asr_device, nemo_asr_decoding, filter_emoji,
+                                  filter_repetition, filter_japanese_stream, disable_transcription_context,
+                                  transcription_initial_prompt, processing_proxy, show_timestamps,
+                                  hide_transcription):
+    transcription_filters = []
+    if filter_emoji:
+        transcription_filters.append("emoji_filter")
+    if filter_repetition:
+        transcription_filters.append("repetition_filter")
+    if filter_japanese_stream:
+        transcription_filters.append("japanese_stream_filter")
+
+    use_faster_whisper = whisper_backend in {"Faster-Whisper", "Faster-Whisper & Simul-Streaming"}
+    use_simul_streaming = whisper_backend in {"Simul-Streaming", "Faster-Whisper & Simul-Streaming"}
+    use_hf_asr = whisper_backend == "HuggingFace ASR"
+    use_qwen3_asr = whisper_backend == "Qwen3-ASR"
+    use_nemo_asr = whisper_backend == "NeMo ASR"
+    use_openai_transcription_api = whisper_backend == "OpenAI Transcription API"
+
+    model = clean_optional(hf_model_name) if use_hf_asr else clean_optional(model_size)
+    language = clean_optional(language)
+    if language == "auto":
+        language = None
+
+    return {
+        "model": model,
+        "language": language,
+        "use_faster_whisper": use_faster_whisper,
+        "use_simul_streaming": use_simul_streaming,
+        "use_hf_asr": use_hf_asr,
+        "use_qwen3_asr": use_qwen3_asr,
+        "use_nemo_asr": use_nemo_asr,
+        "use_openai_transcription_api": use_openai_transcription_api,
+        "openai_transcription_model": clean_optional(openai_transcription_model),
+        "qwen3_asr_model": clean_optional(qwen3_asr_model),
+        "qwen3_asr_dtype": clean_optional(qwen3_asr_dtype),
+        "qwen3_asr_device_map": clean_optional(qwen3_asr_device_map),
+        "qwen3_asr_max_new_tokens": int_optional(qwen3_asr_max_new_tokens),
+        "qwen3_asr_quantization": clean_optional(qwen3_asr_quantization),
+        "qwen3_asr_bnb_4bit_quant_type": clean_optional(qwen3_asr_bnb_4bit_quant_type),
+        "qwen3_asr_bnb_4bit_use_double_quant": bool(qwen3_asr_bnb_4bit_use_double_quant),
+        "nemo_asr_model": clean_optional(nemo_asr_model),
+        "nemo_asr_device": clean_optional(nemo_asr_device),
+        "nemo_asr_decoding": clean_optional(nemo_asr_decoding),
+        "transcription_filters": ",".join(transcription_filters),
+        "disable_transcription_context": bool(disable_transcription_context),
+        "transcription_initial_prompt": clean_optional(transcription_initial_prompt),
+        "processing_proxy": clean_optional(processing_proxy),
+        "output_timestamps": bool(show_timestamps),
+        "hide_transcribe_result": bool(hide_transcription),
+    }
+
+
+def build_runtime_options_from_values(
+        input_type, url, device_rec_interval, audio_source, file_path, input_format, input_cookies, input_proxy,
+        openai_key, google_key, overall_proxy, model_size, language, whisper_backend, openai_transcription_model,
+        hf_model_name, qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens,
+        qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model,
+        nemo_asr_device, nemo_asr_decoding, vad_threshold, min_audio_len, max_audio_len, target_audio_len,
+        silence_threshold, disable_dynamic_vad, disable_dynamic_silence, prefix_retention_len, filter_emoji,
+        filter_repetition, filter_japanese_stream, disable_transcription_context, transcription_initial_prompt,
+        translation_prompt, translation_provider, gpt_model, gemini_model, history_size, translation_timeout,
+        openai_base_url, google_base_url, processing_proxy, use_json_result, retry_if_translation_fails,
+        show_timestamps, show_latency_log, hide_transcription, output_file, output_proxy, cqhttp_url, cqhttp_token,
+        discord_hook, telegram_token, telegram_chat_id):
+    if input_type == "URL":
+        target_url = clean_optional(url)
+        if not target_url:
+            return None, None, "Error: URL is required.\n"
+    elif input_type == "Device":
+        target_url = "device"
+    elif input_type == "File":
+        target_url = clean_optional(file_path)
+        if not target_url:
+            return None, None, "Error: File path is required.\n"
+    else:
+        return None, None, f"Error: Unsupported input type: {input_type}\n"
+
+    effective_input_proxy = clean_optional(input_proxy) or clean_optional(overall_proxy)
+    effective_processing_proxy = clean_optional(processing_proxy) or clean_optional(overall_proxy)
+    effective_output_proxy = clean_optional(output_proxy) or clean_optional(overall_proxy)
+
+    options = build_asr_options_from_values(
+        model_size, language, whisper_backend, openai_transcription_model, hf_model_name, qwen3_asr_model,
+        qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
+        qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device,
+        nemo_asr_decoding, filter_emoji, filter_repetition, filter_japanese_stream, disable_transcription_context,
+        transcription_initial_prompt, effective_processing_proxy, show_timestamps, hide_transcription)
+
+    if translation_provider == "None":
+        translation_prompt = None
+    elif translation_provider == "GPT":
+        google_key = None
+
+    options.update({
+        "proxy": clean_optional(overall_proxy),
+        "format": clean_optional(input_format),
+        "cookies": clean_optional(input_cookies),
+        "input_proxy": effective_input_proxy,
+        "device_index": None,
+        "device_recording_interval": device_rec_interval,
+        "mic": audio_source == "Input Audio",
+        "vad_threshold": vad_threshold,
+        "min_audio_length": min_audio_len,
+        "max_audio_length": max_audio_len,
+        "target_audio_length": target_audio_len,
+        "continuous_no_speech_threshold": silence_threshold,
+        "disable_dynamic_vad_threshold": bool(disable_dynamic_vad),
+        "disable_dynamic_no_speech_threshold": bool(disable_dynamic_silence),
+        "prefix_retention_length": prefix_retention_len,
+        "openai_api_key": clean_optional(openai_key),
+        "google_api_key": clean_optional(google_key) if translation_provider == "Gemini" else None,
+        "openai_base_url": clean_optional(openai_base_url),
+        "google_base_url": clean_optional(google_base_url),
+        "translation_prompt": clean_optional(translation_prompt),
+        "gpt_model": clean_optional(gpt_model),
+        "gemini_model": clean_optional(gemini_model),
+        "translation_history_size": int(history_size),
+        "translation_timeout": int(translation_timeout),
+        "use_json_result": bool(use_json_result),
+        "retry_if_translation_fails": bool(retry_if_translation_fails),
+        "temperature": None,
+        "top_p": None,
+        "top_k": None,
+        "prompt_cache_key": None,
+        "reasoning_effort": None,
+        "verbosity": None,
+        "service_tier": None,
+        "debug_mode": False,
+        "show_latency_log": bool(show_latency_log),
+        "output_file_path": clean_optional(output_file),
+        "cqhttp_url": clean_optional(cqhttp_url),
+        "cqhttp_token": clean_optional(cqhttp_token),
+        "discord_webhook_url": clean_optional(discord_hook),
+        "telegram_token": clean_optional(telegram_token),
+        "telegram_chat_id": int_optional(telegram_chat_id),
+        "output_proxy": effective_output_proxy,
+    })
+    return target_url, options, None
+
+
+class QueueWriter:
+
+    def __init__(self, output_queue):
+        self.output_queue = output_queue
+
+    def write(self, text):
+        if text:
+            self.output_queue.put(text)
+
+    def flush(self):
+        pass
+
+
+def append_log(log_history, text):
+    text = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', text)
+    log_history.append(text)
+    return "".join(log_history)
+
+
+def get_preloaded_asr_status():
+    return preloaded_asr_manager.status_text()
+
+
+def preload_asr_model_from_ui(model_size, language, whisper_backend, openai_transcription_model, hf_model_name,
+                              qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens,
+                              qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type,
+                              qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device,
+                              nemo_asr_decoding, filter_emoji, filter_repetition, filter_japanese_stream,
+                              disable_transcription_context, transcription_initial_prompt, processing_proxy,
+                              show_timestamps, hide_transcription):
+    if is_running:
+        return "A task is running. Stop it before preloading an ASR model."
+    try:
+        options = build_asr_options_from_values(
+            model_size, language, whisper_backend, openai_transcription_model, hf_model_name, qwen3_asr_model,
+            qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
+            qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device,
+            nemo_asr_decoding, filter_emoji, filter_repetition, filter_japanese_stream,
+            disable_transcription_context, transcription_initial_prompt, processing_proxy, show_timestamps,
+            hide_transcription)
+        message = preloaded_asr_manager.preload(build_asr_config(options))
+        return f"{message}\n{preloaded_asr_manager.status_text()}"
+    except Exception as e:
+        return f"Error: {e}\n{preloaded_asr_manager.status_text()}"
+
+
+def unload_asr_model_from_ui():
+    try:
+        message = preloaded_asr_manager.unload()
+        return f"{message}\n{preloaded_asr_manager.status_text()}"
+    except Exception as e:
+        return f"Error: {e}\n{preloaded_asr_manager.status_text()}"
+
+
+def run_preloaded_translator_inprocess(target_url, options, transcriber, enable_subtitle_sharing, public_host,
+                                       public_port):
+    global is_running, inprocess_controller
+
+    done = object()
+    log_queue = queue.SimpleQueue()
+    result = {"code": 0, "error": None}
+    controller = PipelineController()
+    inprocess_controller = controller
+    task_id = None
+    push_url = None
+    push_token = None
+    share_started_here = False
+    log_history = []
+
+    try:
+        if enable_subtitle_sharing:
+            server, share_error = configure_subtitle_share_server(public_host, public_port, True)
+            if share_error:
+                yield share_error
+                return
+            if not server.is_running:
+                try:
+                    server.start()
+                except Exception as e:
+                    result["code"] = 1
+                    yield f"Error: Failed to start subtitle sharing server on port {server.port}: {e}\n"
+                    return
+                share_started_here = True
+            task_id = create_task_id()
+            server.begin_task(task_id, os.getpid())
+            push_url = f"http://127.0.0.1:{server.port}/api/translation/push/{task_id}"
+            push_token = server.push_token
+
+        start_msg = f"Running in-process with preloaded ASR: {preloaded_asr_manager.status_text()}\n"
+        start_msg += f"Input: {target_url}\n"
+        if task_id:
+            start_msg += f"Subtitle sharing task ID: {task_id}\n"
+            start_msg += f"Live subtitles page: http://127.0.0.1:{subtitle_share_server.port}/\n"
+        start_msg += "\n"
+        yield append_log(log_history, start_msg)
+
+        def worker():
+            try:
+                with contextlib.redirect_stdout(QueueWriter(log_queue)), contextlib.redirect_stderr(QueueWriter(log_queue)):
+                    result["code"] = run_inprocess_pipeline(target_url,
+                                                            options,
+                                                            transcriber,
+                                                            controller=controller,
+                                                            subtitle_share_push_url=push_url,
+                                                            subtitle_share_token=push_token)
+            except Exception as e:
+                result["error"] = e
+                result["code"] = 1
+                log_queue.put(f"\nException occurred: {e}\n")
+            finally:
+                log_queue.put(done)
+
+        thread = threading.Thread(target=worker, name="preloaded-webui-runner", daemon=True)
+        thread.start()
+        while True:
+            try:
+                item = log_queue.get(timeout=0.2)
+            except queue.Empty:
+                if not thread.is_alive():
+                    break
+                continue
+            if item is done:
+                break
+            yield append_log(log_history, item)
+
+        while not log_queue.empty():
+            item = log_queue.get()
+            if item is not done:
+                yield append_log(log_history, item)
+
+        if result["error"] is not None:
+            yield append_log(log_history, f"\nProcess exited with return code {result['code']}\n")
+        else:
+            yield append_log(log_history, f"\nProcess exited with return code {result['code']}\n")
+    finally:
+        if task_id:
+            subtitle_share_server.finish_task(task_id, result["code"])
+            time.sleep(0.2)
+        if enable_subtitle_sharing:
+            configure_subtitle_share_server(public_host, public_port, False)
+            if share_started_here and subtitle_share_server.is_running:
+                subtitle_share_server.stop()
+        preloaded_asr_manager.release()
+        inprocess_controller = None
+        is_running = False
+
+
 def run_translator(
         # Input
         input_type,
@@ -681,6 +999,35 @@ def run_translator(
     # we must ensure google_key is NOT passed to avoid accidental switch.
     if translation_provider == "GPT":
         google_key = None
+
+    if preloaded_asr_manager.transcriber is not None:
+        if extra_cli_args and extra_cli_args.strip():
+            yield "Error: Extra CLI arguments are not supported when running with a preloaded ASR model. Remove them or unload the preloaded model.\n"
+            return
+        target_url, runtime_options, runtime_error = build_runtime_options_from_values(
+            input_type, url, device_rec_interval, audio_source, file_path, input_format, input_cookies, input_proxy,
+            openai_key, google_key, overall_proxy, model_size, language, whisper_backend, openai_transcription_model,
+            hf_model_name, qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens,
+            qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant,
+            nemo_asr_model, nemo_asr_device, nemo_asr_decoding, vad_threshold, min_audio_len, max_audio_len,
+            target_audio_len, silence_threshold, disable_dynamic_vad, disable_dynamic_silence, prefix_retention_len,
+            filter_emoji, filter_repetition, filter_japanese_stream, disable_transcription_context,
+            transcription_initial_prompt, translation_prompt, translation_provider, gpt_model, gemini_model,
+            history_size, translation_timeout, openai_base_url, google_base_url, processing_proxy, use_json_result,
+            retry_if_translation_fails, show_timestamps, show_latency_log, hide_transcription, output_file,
+            output_proxy, cqhttp_url, cqhttp_token, discord_hook, telegram_token, telegram_chat_id)
+        if runtime_error:
+            yield runtime_error
+            return
+        try:
+            transcriber = preloaded_asr_manager.get_for_run(build_asr_config(runtime_options))
+        except Exception as e:
+            yield f"Error: {e}\n{preloaded_asr_manager.status_text()}\n"
+            return
+        is_running = True
+        yield from run_preloaded_translator_inprocess(target_url, runtime_options, transcriber,
+                                                     enable_subtitle_sharing, public_host, public_port)
+        return
 
     if enable_subtitle_sharing:
         _, share_error = configure_subtitle_share_server(public_host, public_port, True)
@@ -804,7 +1151,10 @@ def run_translator(
 
 
 def stop_translator():
-    global process, is_running
+    global process, is_running, inprocess_controller
+    if inprocess_controller is not None and is_running:
+        inprocess_controller.request_stop()
+        return "Sending termination signal..."
     if process and is_running:
         process.terminate()
         # On Windows terminate might not look nice for console apps, but this is a python script
@@ -1021,6 +1371,15 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
             processing_proxy_trans = gr.Textbox(label=i18n.get("processing_proxy"),
                                                 placeholder=i18n.get("processing_proxy_ph"))
 
+            with gr.Group():
+                with gr.Row():
+                    preload_asr_btn = gr.Button(i18n.get("preload_asr_model"))
+                    unload_asr_btn = gr.Button(i18n.get("unload_asr_model"))
+                preloaded_asr_status = gr.Textbox(label=i18n.get("preloaded_asr_status"),
+                                                  value=get_preloaded_asr_status(),
+                                                  lines=2,
+                                                  interactive=False)
+
         with gr.Tab(i18n.get("translation")):
             translation_provider = gr.Radio(choices=[(i18n.get("none_option"), "None"), ("GPT", "GPT"),
                                                      ("Gemini", "Gemini")],
@@ -1198,6 +1557,19 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                             qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type,
                             qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device,
                             nemo_asr_decoding])
+
+    preload_asr_inputs = [
+        model_size, language, whisper_backend, openai_transcription_model, hf_model_name, qwen3_asr_model,
+        qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
+        qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device,
+        nemo_asr_decoding, filter_emoji, filter_repetition, filter_japanese_stream, disable_transcription_context,
+        transcription_initial_prompt, processing_proxy_trans, show_timestamps, hide_transcription
+    ]
+    preload_asr_btn.click(preload_asr_model_from_ui,
+                          inputs=preload_asr_inputs,
+                          outputs=preloaded_asr_status,
+                          scroll_to_output=False)
+    unload_asr_btn.click(unload_asr_model_from_ui, outputs=preloaded_asr_status, scroll_to_output=False)
 
     # Translation Visibility
     def update_translation_visibility(choice):

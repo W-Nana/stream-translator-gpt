@@ -210,6 +210,18 @@ The commands on Colab [![Open In Colab](https://colab.research.google.com/assets
     Parakeet is a NeMo-based Japanese ASR model, not a Transformers pipeline model. Use `--use_nemo_asr` instead of `--use_hf_asr`; TDT decoding is the default, and `--nemo_asr_decoding ctc` is available as a fallback/debug mode.
     When `--nemo_asr_device` is a CUDA device, the checkpoint is restored on CPU first and then moved to CUDA to reduce the temporary VRAM peak during model loading. Inference still runs on the selected CUDA device.
 
+### ASR model preloading
+
+For repeated local ASR runs, add `--preload_asr_model` to load the selected ASR backend before starting the task. Add `--keep_asr_loaded` to keep the model resident after the first URL finishes; the CLI will prompt with `Next URL>`, and an empty line or `exit` unloads the model and exits.
+
+```bash
+stream-translator-gpt {URL} --language ja --use_nemo_asr --preload_asr_model --keep_asr_loaded
+```
+
+In persistent CLI mode, pressing Ctrl+C during a task stops only the current task and returns to `Next URL>`; pressing Ctrl+C at the prompt exits and unloads the model. If subtitle sharing is enabled together with `--keep_asr_loaded`, the sharing server stays on the same port and each new URL gets a fresh `task_id`.
+
+In the WebUI Transcription tab, use `Preload ASR Model` and `Unload ASR Model`. Runs reuse the preloaded model only when the current ASR settings match; if backend/model/device/quantization or related ASR settings change, run is blocked until you preload again or unload. OpenAI Transcription API is remote and does not need preloading.
+
 - Translate to other language by **Gemini**:
 
     ```stream-translator-gpt {URL} --language ja --translation_prompt "Translate from Japanese to Chinese" --google_api_key {your_google_key}```
@@ -319,6 +331,8 @@ The SSE stream emits `subtitle`, `status`, heartbeat comments, and `error` event
 | `--transcription_filters`               | emoji_filter,repetition_filter | Filters apply to transcription results, separated by ",". We provide emoji_filter, repetition_filter and japanese_stream_filter.                                                                                   |
 | `--transcription_initial_prompt`        |                                | General purpose prompt/glossary for transcription. Format: "Word1, Word2, Word3, ...". This text is always included in the prompt passed to the model.                                                             |
 | `--disable_transcription_context`       |                                | Set this flag to disable context (previous sentence) propagation in transcription.                                                                                                                                 |
+| `--preload_asr_model`                   |                                | Preload the selected local ASR backend before running. OpenAI Transcription API is remote and does not need preloading.                                                                                            |
+| `--keep_asr_loaded`                     |                                | Keep the preloaded ASR model resident after each task and prompt for the next URL. Requires `--preload_asr_model`.                                                                                                  |
 | **Translation Options**                 |
 | `--gpt_model`                           | gpt-5.4-nano                   | OpenAI's GPT model name, gpt-5.4 / gpt-5.4-mini / gpt-5.4-nano / gpt-5.5                                                                                                                                           |
 | `--gemini_model`                        | gemini-3.1-flash-lite          | Google's Gemini model name, gemini-2.5-flash / gemini-2.5-flash-lite / gemini-3-flash-preview / gemini-3.1-flash-lite / gemini-3.5-flash                                                                           |
