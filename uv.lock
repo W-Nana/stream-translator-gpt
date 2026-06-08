@@ -4142,6 +4142,44 @@ wheels = [
 ]
 
 [[package]]
+name = "omnivad"
+version = "0.2.12"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "soundfile" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/32/3a/5c56fc27c4c48e61b7258f33993db7e50814ce6bbc528728f242a296d734/omnivad-0.2.12.tar.gz", hash = "sha256:fb7c0b2104f9212fb4b1b2bc27b70528fd16ab660245b11e56af2555375d55b1", size = 8634297, upload-time = "2026-05-07T10:32:39.947Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ed/7b/c87fa7ccee969055d94a991d538565f962d9ff2d510adea9d78ca9dac395/omnivad-0.2.12-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:23484dd735e117aabb5f9ca248b8f5b0a6c5e8d8759301b90b6d78936850dcaf", size = 5340386, upload-time = "2026-05-07T10:31:46.92Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/5f/38656d80392a0d6eff73b167c2102f66346dc2a2c6b53002c46e705b1522/omnivad-0.2.12-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:10878863d70a8277912b45e3dd5855afbe0346d70c9de0dd4bf6bea0b9e58276", size = 6665421, upload-time = "2026-05-07T10:31:48.852Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/de/94238673e8fcd708e70bde301cd0ff96e82203438e0992e31495ddd1b306/omnivad-0.2.12-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:758ae7ee74c13a21e153010c738b3282b95201ad5861f835118d3d007203959b", size = 7949395, upload-time = "2026-05-07T10:31:50.497Z" },
+    { url = "https://files.pythonhosted.org/packages/02/5f/a0c5431593b8cd8c91c86e3e0fc7db5cf9d696c74f6ad3d8eaa768338b62/omnivad-0.2.12-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:6bc516cc5c315968b03161e1fdb17776ad2b8492a18a1da23c26654e655d0fe5", size = 12240271, upload-time = "2026-05-07T10:31:52.892Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/f3/48ade7bcd70c3e94faea6b5904e7f734aab6ec926599802af1cee85f8ebf/omnivad-0.2.12-cp310-cp310-win_amd64.whl", hash = "sha256:940ee0f80ff1dddef374c5f357c4ce89aa183b9a07fe0a0b4f86f2fa0bbc3b77", size = 10352876, upload-time = "2026-05-07T10:31:55.29Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/28/97fcb54078040f1e4e79237fcc26991a5b99913ad989e371f6726772639a/omnivad-0.2.12-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:5b3c06791fac84033d65bf9b0739032176f33eda990c59c0250c50368ad3b53e", size = 5340314, upload-time = "2026-05-07T10:31:57.859Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/bd/72090d07b0521becce9691122d21f7e477fb3dba6c3c63839de03d3e1d82/omnivad-0.2.12-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:18759114eb0e046e0aeb52c18f48539730622cc039ce444e2198e33d337617cc", size = 6665457, upload-time = "2026-05-07T10:31:59.723Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/86/dfe10b859a1590d7ed06d6f71ffb34d67fa5edb203aa47053f7e40d5349e/omnivad-0.2.12-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:7954cd836b574bc22de31e6dd0d1d45866d159dfe9888aedc6c57b1c1ca5abc9", size = 7949376, upload-time = "2026-05-07T10:32:01.495Z" },
+    { url = "https://files.pythonhosted.org/packages/47/9c/56e8090669b7b683bd67222d054966760ab9eaa18605fe80098e51316537/omnivad-0.2.12-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:128b5d9c5b7f69efeccc19a4d847708b65f0e543e98ec5d3c09332fef490cf98", size = 12240260, upload-time = "2026-05-07T10:32:03.459Z" },
+    { url = "https://files.pythonhosted.org/packages/92/78/0e266c5e94f74727f765e51fcecac8eb16665c811d5eb762b202c9a82011/omnivad-0.2.12-cp311-cp311-win_amd64.whl", hash = "sha256:ba6be1963025b070f1131436eae9c9d251b2321f434308df1048f8d79edb40ee", size = 10352892, upload-time = "2026-05-07T10:32:05.881Z" },
+    { url = "https://files.pythonhosted.org/packages/c6/1c/8512f2ceef7c1232b929003fedaf827399e2bb8f6cf447f9f6bc8eaecf2e/omnivad-0.2.12-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:8dbf599d1aa94143c8677da6ededb37ed3175e6584ad91f64c1bf2a43a1c5cb0", size = 5390411, upload-time = "2026-05-07T10:32:08.029Z" },
+    { url = "https://files.pythonhosted.org/packages/75/86/10a1e244bae402634c24a87b40926e8fc494e408769980fa28fc4e2085ad/omnivad-0.2.12-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:77d4cd9b3922d9c4b0affd6de424eb2bb00d5050b0f8e0d9bd31f2580b3b9f88", size = 6665403, upload-time = "2026-05-07T10:32:09.954Z" },
+    { url = "https://files.pythonhosted.org/packages/17/20/80025942610161bfadf5792de49da1128310800113b73262e41baed8817e/omnivad-0.2.12-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:b99eb8f409e28b6de90bb66810a02e0c837a7be222385335b6902067aa06935a", size = 7949378, upload-time = "2026-05-07T10:32:11.528Z" },
+    { url = "https://files.pythonhosted.org/packages/39/1c/f432c29763a1b07c503e327781b42d334760879bc7d6c5a2621582a3b74f/omnivad-0.2.12-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c4ec1ad3e60392ebc067258f499dc9b760308ebbefb72e7a785174792fe4fb7c", size = 12240244, upload-time = "2026-05-07T10:32:13.344Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/89/16558e04e024d21f70261320a7589cad8b76cd441443fe569e86f3f9099c/omnivad-0.2.12-cp312-cp312-win_amd64.whl", hash = "sha256:9794e7b1c22871c4e624537255c94b0ff82bb0291c13fabe16cd7bd011c2dc2d", size = 10352869, upload-time = "2026-05-07T10:32:15.97Z" },
+    { url = "https://files.pythonhosted.org/packages/60/f4/65af80ae55efef71d6ea5b80b52c0142987d4b207be4c989cf2816e3f5d1/omnivad-0.2.12-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:f58c9f872dd8ae433f709323a9c318c7d2f9a30f8cc601f361dfeda7d48abf5f", size = 5390357, upload-time = "2026-05-07T10:32:18.444Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/73/abb89b10693e5c68d123a518bc0f144d494a709dfc22ea48938fd22c1677/omnivad-0.2.12-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:31e37c5f19a67ff4bf18c79ac28a51dd12fddf5314b5e6ff47819179f2e6cc95", size = 6665415, upload-time = "2026-05-07T10:32:20.39Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/61/c5a1fc184b63d77eadbc6a351127132e1bf64ffb77cceb89e3230774c928/omnivad-0.2.12-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:5810bacd94fbb44fc523ea1fba4f5a63f39a610e31ee0e6d0cd92f8779844ecd", size = 7949405, upload-time = "2026-05-07T10:32:22.584Z" },
+    { url = "https://files.pythonhosted.org/packages/39/e7/b71c8b485fa9653143d81a5899a58a5e14113cc642e5389b598da9ff0be4/omnivad-0.2.12-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7ff2501d9921fdb33ae8e8c6b8711a4009f28e2120473faf32fd803a5d266016", size = 12240284, upload-time = "2026-05-07T10:32:24.24Z" },
+    { url = "https://files.pythonhosted.org/packages/66/a8/cc633ad6087800adce3e0e872cd8e18a9ba4943b67834700b5b74fcc33f6/omnivad-0.2.12-cp313-cp313-win_amd64.whl", hash = "sha256:550cbef1aa9277680aab3758001e68484eee1d5cbaf2e4b7d5efe9f1599db8fd", size = 10352853, upload-time = "2026-05-07T10:32:26.667Z" },
+    { url = "https://files.pythonhosted.org/packages/f7/cf/f8db3c5aaba3b0c2e7d8468609852ed9678a64303eb5011aef366725d982/omnivad-0.2.12-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:f377e2633e54f14016aa395789e6060ac1dfcdca93c477dd658b6a8fcaa3b030", size = 5390659, upload-time = "2026-05-07T10:32:28.759Z" },
+    { url = "https://files.pythonhosted.org/packages/da/43/789f63a4b57b6d0d115b5991f1fbe15a5840bae443817caa69ff7a7af2cf/omnivad-0.2.12-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:b68fdc57014720556be327bbfa2159e26e5ec85128dda9bcc2d2a8ffc4dfb46b", size = 6665451, upload-time = "2026-05-07T10:32:30.709Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/80/7889b44178f55b5af3d117dbd81c0318f97b8ff1879577978fd33e0edaa3/omnivad-0.2.12-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:39f352aa712917ee6161b557118b22536049e6d7676b8fff6ffb41d53c2804e0", size = 7949380, upload-time = "2026-05-07T10:32:32.804Z" },
+    { url = "https://files.pythonhosted.org/packages/50/e6/1139fca967df904b7c7195359615b5a73f387de751f812954700096f5255/omnivad-0.2.12-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:1c559b3b168fdcc53ea3c55bf4e81dfa52d253c9f6c77a0ce45daa0f48e68189", size = 12240284, upload-time = "2026-05-07T10:32:34.945Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/88/faa6153e84facd62ef03db3ed090261a468fd0cada3ba6ee05c44d7a1ff0/omnivad-0.2.12-cp314-cp314-win_amd64.whl", hash = "sha256:d9627e8fec900ba3e7c693621f3ca8a86466a7018b357c80d1a505b7b21046bc", size = 10542666, upload-time = "2026-05-07T10:32:37.905Z" },
+]
+
+[[package]]
 name = "onnx"
 version = "1.21.0"
 source = { registry = "https://pypi.org/simple" }
@@ -6386,6 +6424,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+firered-vad = [
+    { name = "omnivad" },
+]
 hf-asr = [
     { name = "transformers" },
 ]
@@ -6411,6 +6452,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.26.0,<1.0" },
     { name = "nemo-toolkit", extras = ["asr"], marker = "extra == 'nemo-asr'" },
     { name = "numpy" },
+    { name = "omnivad", marker = "extra == 'firered-vad'", specifier = ">=0.2.12" },
     { name = "openai", specifier = ">=2.0,<3.0" },
     { name = "openai-whisper", specifier = "==20250625" },
     { name = "platformdirs", marker = "extra == 'webui'", specifier = ">=4.0" },
@@ -6421,7 +6463,7 @@ requires-dist = [
     { name = "yt-dlp", extras = ["default", "deno"], specifier = ">=2026.3.17" },
     { name = "yt-dlp-ejs", specifier = ">=0.8.0" },
 ]
-provides-extras = ["webui", "hf-asr", "qwen-asr", "nemo-asr"]
+provides-extras = ["webui", "hf-asr", "qwen-asr", "nemo-asr", "firered-vad"]
 
 [[package]]
 name = "strenum"

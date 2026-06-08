@@ -24,6 +24,8 @@
     "language": "auto",
     "whisper_backend": "Whisper",
     "openai_transcription_model": "gpt-4o-mini-transcribe",
+    "vad_backend": "silero",
+    "firered_vad_model_path": "",
     "vad_threshold": 0.35,
     "min_audio_len": 0.5,
     "max_audio_len": 30.0,

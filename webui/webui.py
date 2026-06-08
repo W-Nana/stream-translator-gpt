@@ -94,8 +94,8 @@ INPUT_KEYS = [
     "hf_model_name", "qwen3_asr_model", "qwen3_asr_dtype", "qwen3_asr_device_map",
     "qwen3_asr_max_new_tokens", "qwen3_asr_quantization", "qwen3_asr_bnb_4bit_quant_type",
     "qwen3_asr_bnb_4bit_use_double_quant", "nemo_asr_model", "nemo_asr_device", "nemo_asr_decoding",
-    "language", "whisper_backend", "openai_transcription_model", "vad_threshold", "min_audio_len",
-    "max_audio_len", "target_audio_len", "silence_threshold",
+    "language", "whisper_backend", "openai_transcription_model", "vad_backend", "firered_vad_model_path",
+    "vad_threshold", "min_audio_len", "max_audio_len", "target_audio_len", "silence_threshold",
     "disable_dynamic_vad", "disable_dynamic_silence", "prefix_retention_len", "filter_emoji", "filter_repetition",
     "filter_japanese_stream",
     "disable_transcription_context", "transcription_initial_prompt", "translation_prompt", "translation_provider",
@@ -338,6 +338,8 @@ def build_translator_command(
         nemo_asr_model,
         nemo_asr_device,
         nemo_asr_decoding,
+        vad_backend,
+        firered_vad_model_path,
         vad_threshold,
         min_audio_len,
         max_audio_len,
@@ -432,6 +434,9 @@ def build_translator_command(
             cmd.extend(["--input_proxy", input_proxy])
 
     # --- Audio Slicing ---
+    add_arg("--vad_backend", vad_backend, "vad_backend")
+    if firered_vad_model_path:
+        add_arg("--firered_vad_model_path", firered_vad_model_path, "firered_vad_model_path")
     add_arg("--vad_threshold", vad_threshold, "vad_threshold")
     if disable_dynamic_vad:
         cmd.append("--disable_dynamic_vad_threshold")
@@ -677,13 +682,13 @@ def build_runtime_options_from_values(
         openai_key, google_key, overall_proxy, model_size, language, whisper_backend, openai_transcription_model,
         hf_model_name, qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens,
         qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model,
-        nemo_asr_device, nemo_asr_decoding, vad_threshold, min_audio_len, max_audio_len, target_audio_len,
-        silence_threshold, disable_dynamic_vad, disable_dynamic_silence, prefix_retention_len, filter_emoji,
-        filter_repetition, filter_japanese_stream, disable_transcription_context, transcription_initial_prompt,
-        translation_prompt, translation_provider, gpt_model, gemini_model, history_size, translation_timeout,
-        openai_base_url, google_base_url, processing_proxy, use_json_result, retry_if_translation_fails,
-        show_timestamps, show_latency_log, hide_transcription, output_file, output_proxy, cqhttp_url, cqhttp_token,
-        discord_hook, telegram_token, telegram_chat_id):
+        nemo_asr_device, nemo_asr_decoding, vad_backend, firered_vad_model_path, vad_threshold, min_audio_len,
+        max_audio_len, target_audio_len, silence_threshold, disable_dynamic_vad, disable_dynamic_silence,
+        prefix_retention_len, filter_emoji, filter_repetition, filter_japanese_stream, disable_transcription_context,
+        transcription_initial_prompt, translation_prompt, translation_provider, gpt_model, gemini_model, history_size,
+        translation_timeout, openai_base_url, google_base_url, processing_proxy, use_json_result,
+        retry_if_translation_fails, show_timestamps, show_latency_log, hide_transcription, output_file, output_proxy,
+        cqhttp_url, cqhttp_token, discord_hook, telegram_token, telegram_chat_id):
     if input_type == "URL":
         target_url = clean_optional(url)
         if not target_url:
@@ -721,6 +726,8 @@ def build_runtime_options_from_values(
         "device_index": None,
         "device_recording_interval": device_rec_interval,
         "mic": audio_source == "Input Audio",
+        "vad_backend": clean_optional(vad_backend) or "silero",
+        "firered_vad_model_path": clean_optional(firered_vad_model_path),
         "vad_threshold": vad_threshold,
         "min_audio_length": min_audio_len,
         "max_audio_length": max_audio_len,
@@ -937,6 +944,8 @@ def run_translator(
         nemo_asr_model,
         nemo_asr_device,
         nemo_asr_decoding,
+        vad_backend,
+        firered_vad_model_path,
         vad_threshold,
         min_audio_len,
         max_audio_len,
@@ -1009,13 +1018,14 @@ def run_translator(
             openai_key, google_key, overall_proxy, model_size, language, whisper_backend, openai_transcription_model,
             hf_model_name, qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens,
             qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant,
-            nemo_asr_model, nemo_asr_device, nemo_asr_decoding, vad_threshold, min_audio_len, max_audio_len,
-            target_audio_len, silence_threshold, disable_dynamic_vad, disable_dynamic_silence, prefix_retention_len,
-            filter_emoji, filter_repetition, filter_japanese_stream, disable_transcription_context,
-            transcription_initial_prompt, translation_prompt, translation_provider, gpt_model, gemini_model,
-            history_size, translation_timeout, openai_base_url, google_base_url, processing_proxy, use_json_result,
-            retry_if_translation_fails, show_timestamps, show_latency_log, hide_transcription, output_file,
-            output_proxy, cqhttp_url, cqhttp_token, discord_hook, telegram_token, telegram_chat_id)
+            nemo_asr_model, nemo_asr_device, nemo_asr_decoding, vad_backend, firered_vad_model_path, vad_threshold,
+            min_audio_len, max_audio_len, target_audio_len, silence_threshold, disable_dynamic_vad,
+            disable_dynamic_silence, prefix_retention_len, filter_emoji, filter_repetition, filter_japanese_stream,
+            disable_transcription_context, transcription_initial_prompt, translation_prompt, translation_provider,
+            gpt_model, gemini_model, history_size, translation_timeout, openai_base_url, google_base_url,
+            processing_proxy, use_json_result, retry_if_translation_fails, show_timestamps, show_latency_log,
+            hide_transcription, output_file, output_proxy, cqhttp_url, cqhttp_token, discord_hook, telegram_token,
+            telegram_chat_id)
         if runtime_error:
             yield runtime_error
             return
@@ -1064,6 +1074,8 @@ def run_translator(
                                           nemo_asr_model=nemo_asr_model,
                                           nemo_asr_device=nemo_asr_device,
                                           nemo_asr_decoding=nemo_asr_decoding,
+                                          vad_backend=vad_backend,
+                                          firered_vad_model_path=firered_vad_model_path,
                                           vad_threshold=vad_threshold,
                                           min_audio_len=min_audio_len,
                                           max_audio_len=max_audio_len,
@@ -1226,6 +1238,13 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
 
         with gr.Tab(i18n.get("audio_slicing")):
             with gr.Group():
+                vad_backend = gr.Radio(choices=[("Silero", "silero"), ("FireRedVAD", "firered")],
+                                       value=get_default("vad_backend", "silero"),
+                                       label=i18n.get("vad_backend"))
+                firered_vad_model_path = gr.Textbox(label=i18n.get("firered_vad_model_path"),
+                                                    value=get_default("firered_vad_model_path", ""),
+                                                    placeholder=i18n.get("firered_vad_model_path_ph"),
+                                                    visible=(get_default("vad_backend", "silero") == "firered"))
                 vad_threshold = gr.Slider(0.0, 1.0, value=get_default("vad_threshold"), label=i18n.get("vad_threshold"))
                 disable_dynamic_vad = gr.Checkbox(label=i18n.get("disable_dynamic_vad"),
                                                   value=get_default("disable_dynamic_vad"))
@@ -1528,6 +1547,11 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
 
     input_type.change(update_input_visibility, input_type, [url_group, device_group, file_group])
 
+    def update_vad_backend_visibility(choice):
+        return gr.update(visible=(choice == "firered"))
+
+    vad_backend.change(update_vad_backend_visibility, vad_backend, firered_vad_model_path)
+
     # Whisper Backend Visibility
     def update_backend_visibility(choice):
         openai_visible = (choice == "OpenAI Transcription API")
@@ -1629,10 +1653,10 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                         whisper_backend, openai_transcription_model, hf_model_name, qwen3_asr_model, qwen3_asr_dtype,
                         qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
                         qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model,
-                        nemo_asr_device, nemo_asr_decoding, vad_threshold, min_audio_len, max_audio_len,
-                        target_audio_len, silence_threshold, disable_dynamic_vad, disable_dynamic_silence,
-                        prefix_retention_len, filter_emoji, filter_repetition, filter_japanese_stream,
-                        disable_transcription_context, transcription_initial_prompt,
+                        nemo_asr_device, nemo_asr_decoding, vad_backend, firered_vad_model_path, vad_threshold,
+                        min_audio_len, max_audio_len, target_audio_len, silence_threshold, disable_dynamic_vad,
+                        disable_dynamic_silence, prefix_retention_len, filter_emoji, filter_repetition,
+                        filter_japanese_stream, disable_transcription_context, transcription_initial_prompt,
                         translation_prompt, translation_provider, gpt_model, gemini_model, history_size,
                         translation_timeout, openai_base_url, google_base_url, processing_proxy, use_json_result,
                         retry_if_translation_fails, show_timestamps, show_latency_log, hide_transcription, output_file,

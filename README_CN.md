@@ -130,6 +130,16 @@ uv sync --extra nemo_asr
 uv sync --extra webui --extra nemo_asr
 ```
 
+如需包含通过 OmniVAD 提供的 FireRedVAD：
+
+```bash
+# 只安装命令行
+uv sync --extra firered_vad
+
+# WebUI
+uv sync --extra webui --extra firered_vad
+```
+
 如果需要 CUDA，请先运行 `uv sync`，然后根据您的显卡/CUDA 环境，从 [PyTorch 安装指南](https://pytorch.org/get-started/locally/) 安装或替换兼容的 PyTorch build。安装自定义 PyTorch build 后，请直接运行虚拟环境里的入口，或使用 `uv run --no-sync ...`，避免 `uv` 在 exact sync 时替换它。
 
 安装自定义 PyTorch 后，如需再次同步依赖，请使用辅助脚本保留当前 torch/triton/CUDA runtime：
@@ -209,6 +219,12 @@ Colab上的命令 [![Open In Colab](https://colab.research.google.com/assets/col
 
     Parakeet 是基于 NeMo 的日语 ASR 模型，不是 Transformers pipeline 模型。请使用 `--use_nemo_asr`，不要使用 `--use_hf_asr`；TDT 解码是默认模式，也可以用 `--nemo_asr_decoding ctc` 作为 fallback/debug 模式。
     当 `--nemo_asr_device` 是 CUDA 设备时，checkpoint 会先在 CPU 上还原，再移动到 CUDA，以降低模型加载阶段的临时显存峰值。推理仍会在所选 CUDA 设备上运行。
+
+- 使用 **FireRedVAD** 进行音频切片（需要先执行 `pip install stream-translator-gpt[firered_vad]`）：
+
+    ```stream-translator-gpt {网址} --vad_backend firered```
+
+    FireRedVAD 通过 OmniVAD 的 CPU native runtime 提供，不会安装或锁定 PyTorch。默认使用 OmniVAD 内置的 FireRedVAD 模型，也可以通过 `--firered_vad_model_path` 指定自定义模型。
 
 ### ASR 模型预载
 
@@ -307,6 +323,8 @@ SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数
 | `--continuous_no_speech_threshold`      | 1.0                            | 如果在此秒数内没有语音，则进行切片。如果启用了动态无语音阈值（默认启用），实际阈值将基于此值动态调整。                                                                    |
 | `--disable_dynamic_no_speech_threshold` |                                | 设置此标志以禁用动态静音阈值。                                                                                                                                            |
 | `--prefix_retention_length`             | 0.5                            | 切片时保留的前缀音频长度。                                                                                                                                                |
+| `--vad_backend`                         | silero                         | 音频切片使用的 VAD 后端：silero 或 firered。FireRedVAD 需要先执行 `pip install stream-translator-gpt[firered_vad]`。                                                      |
+| `--firered_vad_model_path`              |                                | 可选的 OmniVAD FireRedVAD `.omnivad` 模型路径。留空时使用 OmniVAD 内置模型。                                                                                              |
 | `--vad_threshold`                       | 0.35                           | 范围 0~1。此值越高，语音判断越严格。如果启用了动态 VAD 阈值（默认启用），此阈值将根据输入语音的 VAD 结果动态调整。                                                        |
 | `--disable_dynamic_vad_threshold`       |                                | 设置此标志以禁用动态 VAD 阈值。                                                                                                                                           |
 | **转录选项**                            |                                |                                                                                                                                                                           |

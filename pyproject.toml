@@ -55,6 +55,7 @@ webui = ["gradio>=5.0,<6.0", "platformdirs>=4.0"]
 hf_asr = ["transformers>=4.40.0"]
 qwen_asr = ["qwen-asr", "bitsandbytes>=0.43"]
 nemo_asr = ["nemo-toolkit[asr]"]
+firered_vad = ["omnivad>=0.2.12"]
 
 [project.scripts]
 stream-translator-gpt = "stream_translator_gpt.main:cli"

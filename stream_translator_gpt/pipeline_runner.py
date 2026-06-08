@@ -58,6 +58,8 @@ def create_slicer(options: dict):
         prefix_retention_length=options.get("prefix_retention_length"),
         vad_threshold=options.get("vad_threshold"),
         dynamic_vad_threshold=not bool(options.get("disable_dynamic_vad_threshold")),
+        vad_backend=options.get("vad_backend"),
+        firered_vad_model_path=options.get("firered_vad_model_path"),
     )
 
 

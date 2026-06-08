@@ -30,9 +30,9 @@ from . import __version__
 def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, proxy, format, cookies, input_proxy,
          device_index, device_recording_interval, mic, min_audio_length, max_audio_length, target_audio_length,
          continuous_no_speech_threshold, disable_dynamic_no_speech_threshold, prefix_retention_length, vad_threshold,
-         disable_dynamic_vad_threshold, model, language, use_faster_whisper, use_simul_streaming, use_hf_asr,
-         use_qwen3_asr, use_openai_transcription_api, openai_transcription_model, qwen3_asr_model, qwen3_asr_dtype,
-         qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
+         disable_dynamic_vad_threshold, vad_backend, firered_vad_model_path, model, language, use_faster_whisper,
+         use_simul_streaming, use_hf_asr, use_qwen3_asr, use_openai_transcription_api, openai_transcription_model,
+         qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
          qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, use_nemo_asr, nemo_asr_model,
          nemo_asr_device, nemo_asr_decoding, transcription_filters, disable_transcription_context,
          transcription_initial_prompt, gpt_model, gemini_model, translation_prompt, translation_history_size,
@@ -111,6 +111,8 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
             prefix_retention_length=prefix_retention_length,
             vad_threshold=vad_threshold,
             dynamic_vad_threshold=not disable_dynamic_vad_threshold,
+            vad_backend=vad_backend,
+            firered_vad_model_path=firered_vad_model_path,
         )
 
         def init_transcriber():
@@ -456,6 +458,15 @@ def cli():
     parser.add_argument('--disable_dynamic_vad_threshold',
                         action='store_true',
                         help='Set this flag to disable dynamic VAD threshold.')
+    parser.add_argument('--vad_backend',
+                        type=str,
+                        choices=['silero', 'firered'],
+                        default='silero',
+                        help='VAD backend used for audio slicing. FireRedVAD requires the firered_vad extra.')
+    parser.add_argument('--firered_vad_model_path',
+                        type=str,
+                        default=None,
+                        help='Optional OmniVAD FireRedVAD .omnivad model path. If omitted, the bundled OmniVAD model is used.')
     parser.add_argument(
         '--model',
         type=str,

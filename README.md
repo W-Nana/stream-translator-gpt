@@ -130,6 +130,16 @@ uv sync --extra nemo_asr
 uv sync --extra webui --extra nemo_asr
 ```
 
+To include FireRedVAD via OmniVAD:
+
+```bash
+# command line only
+uv sync --extra firered_vad
+
+# WebUI
+uv sync --extra webui --extra firered_vad
+```
+
 If you need CUDA, run `uv sync` first, then install or replace PyTorch with a build that matches your GPU/CUDA environment from the [PyTorch installation guide](https://pytorch.org/get-started/locally/). After installing a custom PyTorch build, run the virtualenv entry points directly, or use `uv run --no-sync ...`, so `uv` does not replace it during an exact sync.
 
 For later dependency syncs after a custom PyTorch install, use the helper script to keep the current torch/triton/CUDA runtime in place:
@@ -209,6 +219,12 @@ The commands on Colab [![Open In Colab](https://colab.research.google.com/assets
 
     Parakeet is a NeMo-based Japanese ASR model, not a Transformers pipeline model. Use `--use_nemo_asr` instead of `--use_hf_asr`; TDT decoding is the default, and `--nemo_asr_decoding ctc` is available as a fallback/debug mode.
     When `--nemo_asr_device` is a CUDA device, the checkpoint is restored on CPU first and then moved to CUDA to reduce the temporary VRAM peak during model loading. Inference still runs on the selected CUDA device.
+
+- Use **FireRedVAD** for audio slicing (requires `pip install stream-translator-gpt[firered_vad]`):
+
+    ```stream-translator-gpt {URL} --vad_backend firered```
+
+    FireRedVAD is provided through OmniVAD's CPU native runtime. It does not install or pin PyTorch, and uses the bundled OmniVAD FireRedVAD model unless `--firered_vad_model_path` is set.
 
 ### ASR model preloading
 
@@ -307,6 +323,8 @@ The SSE stream emits `subtitle`, `status`, heartbeat comments, and `error` event
 | `--continuous_no_speech_threshold`      | 1.0                            | Slice if there is no speech during this number of seconds. If the dynamic no speech threshold is enabled (enabled by default), the actual threshold will be dynamically adjusted based on this value.              |
 | `--disable_dynamic_no_speech_threshold` |                                | Set this flag to disable dynamic no speech threshold.                                                                                                                                                              |
 | `--prefix_retention_length`             | 0.5                            | The length of the retention prefix audio during slicing.                                                                                                                                                           |
+| `--vad_backend`                         | silero                         | VAD backend used for audio slicing: silero or firered. FireRedVAD requires `pip install stream-translator-gpt[firered_vad]`.                                                                                      |
+| `--firered_vad_model_path`              |                                | Optional OmniVAD FireRedVAD `.omnivad` model path. If omitted, the bundled OmniVAD model is used.                                                                                                                 |
 | `--vad_threshold`                       | 0.35                           | Range 0~1. the higher this value, the stricter the speech judgment. If dynamic VAD threshold is enabled (enabled by default), this threshold will be adjusted dynamically based on the input speech's VAD results. |
 | `--disable_dynamic_vad_threshold`       |                                | Set this flag to disable dynamic VAD threshold.                                                                                                                                                                    |
 | **Transcription Options**               |
