@@ -20,6 +20,7 @@ class ASRConfig:
     output_timestamps: bool
     disable_transcription_context: bool
     transcription_initial_prompt: str | None
+    insecure_api_tls: bool = False
     use_faster_whisper: bool = False
     openai_transcription_model: str | None = None
     qwen3_asr_model: str | None = None
@@ -83,8 +84,8 @@ def build_asr_config(options: dict[str, Any]) -> ASRConfig:
     qwen3_asr_max_new_tokens = options.get("qwen3_asr_max_new_tokens") if backend == "qwen3" else None
     qwen3_asr_quantization = options.get("qwen3_asr_quantization") if backend == "qwen3" else None
     qwen3_asr_bnb_4bit_quant_type = options.get("qwen3_asr_bnb_4bit_quant_type") if backend == "qwen3" else None
-    qwen3_asr_bnb_4bit_use_double_quant = (
-        bool(options.get("qwen3_asr_bnb_4bit_use_double_quant")) if backend == "qwen3" else False)
+    qwen3_asr_bnb_4bit_use_double_quant = (bool(options.get("qwen3_asr_bnb_4bit_use_double_quant"))
+                                           if backend == "qwen3" else False)
     nemo_asr_model = options.get("nemo_asr_model") if backend == "nemo" else None
     nemo_asr_device = options.get("nemo_asr_device") if backend == "nemo" else None
     nemo_asr_decoding = options.get("nemo_asr_decoding") if backend == "nemo" else None
@@ -99,6 +100,7 @@ def build_asr_config(options: dict[str, Any]) -> ASRConfig:
         output_timestamps=bool(options.get("output_timestamps")),
         disable_transcription_context=bool(options.get("disable_transcription_context")),
         transcription_initial_prompt=options.get("transcription_initial_prompt"),
+        insecure_api_tls=bool(options.get("insecure_api_tls")),
         use_faster_whisper=backend in {"faster", "faster_simul"},
         openai_transcription_model=openai_transcription_model,
         qwen3_asr_model=qwen3_asr_model,
@@ -128,22 +130,33 @@ def create_transcriber(config: ASRConfig):
                               language=config.language,
                               use_faster_whisper=True,
                               proxy=config.processing_proxy,
+                              insecure_api_tls=config.insecure_api_tls,
                               **common_args)
     if config.backend == "simul":
         return SimulStreaming(model=config.model,
                               language=config.language,
                               use_faster_whisper=False,
                               proxy=config.processing_proxy,
+                              insecure_api_tls=config.insecure_api_tls,
                               **common_args)
     if config.backend == "faster":
-        return FasterWhisper(model=config.model, language=config.language, proxy=config.processing_proxy, **common_args)
+        return FasterWhisper(model=config.model,
+                             language=config.language,
+                             proxy=config.processing_proxy,
+                             insecure_api_tls=config.insecure_api_tls,
+                             **common_args)
     if config.backend == "openai_api":
         return RemoteOpenaiTranscriber(model=config.openai_transcription_model,
                                        language=config.language,
                                        proxy=config.processing_proxy,
+                                       insecure_api_tls=config.insecure_api_tls,
                                        **common_args)
     if config.backend == "hf":
-        return HFTranscriber(model=config.model, language=config.language, proxy=config.processing_proxy, **common_args)
+        return HFTranscriber(model=config.model,
+                             language=config.language,
+                             proxy=config.processing_proxy,
+                             insecure_api_tls=config.insecure_api_tls,
+                             **common_args)
     if config.backend == "qwen3":
         return Qwen3ASRTranscriber(model=config.qwen3_asr_model,
                                    language=config.language,
@@ -154,12 +167,14 @@ def create_transcriber(config: ASRConfig):
                                    quantization=config.qwen3_asr_quantization,
                                    bnb_4bit_quant_type=config.qwen3_asr_bnb_4bit_quant_type,
                                    bnb_4bit_use_double_quant=config.qwen3_asr_bnb_4bit_use_double_quant,
+                                   insecure_api_tls=config.insecure_api_tls,
                                    **common_args)
     if config.backend == "nemo":
         return NemoASRTranscriber(model=config.nemo_asr_model,
                                   proxy=config.processing_proxy,
                                   device=config.nemo_asr_device,
                                   decoding=config.nemo_asr_decoding,
+                                  insecure_api_tls=config.insecure_api_tls,
                                   **common_args)
     return OpenaiWhisper(model=config.model, language=config.language, **common_args)
 

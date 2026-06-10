@@ -12,7 +12,6 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 from uuid import uuid4
 
-
 DEFAULT_PUBLIC_PORT = 8765
 DEFAULT_PUBLIC_HOST = "0.0.0.0"
 PING_INTERVAL_SECONDS = 15
@@ -71,10 +70,7 @@ class SharedTask:
 
 class SubtitleShareServer:
 
-    def __init__(self,
-                 host: str = DEFAULT_PUBLIC_HOST,
-                 port: int = DEFAULT_PUBLIC_PORT,
-                 enabled: bool = False) -> None:
+    def __init__(self, host: str = DEFAULT_PUBLIC_HOST, port: int = DEFAULT_PUBLIC_PORT, enabled: bool = False) -> None:
         self.host = host
         self.port = int(port)
         self.enabled = bool(enabled)

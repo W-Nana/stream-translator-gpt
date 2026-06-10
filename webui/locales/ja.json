@@ -12,6 +12,7 @@
     "show_api_keys": "APIキーを表示",
     "overall_proxy": "全般プロキシ",
     "overall_proxy_ph": "http://127.0.0.1:7890",
+    "insecure_api_tls": "API TLS 検証を無効化（信頼済みプロキシのみ）",
     "input": "入力",
     "input_source": "入力ソース",
     "stream_url": "配信 URL",

@@ -129,12 +129,14 @@ def run_inprocess_pipeline(url: str,
     ClientPool.init(openai_api_key=options.get("openai_api_key"),
                     google_api_key=options.get("google_api_key"),
                     proxy=options.get("processing_proxy"),
-                    google_base_url=options.get("google_base_url"))
+                    google_base_url=options.get("google_base_url"),
+                    insecure_api_tls=bool(options.get("insecure_api_tls")))
 
     getter_to_slicer_queue = queue.SimpleQueue()
     slicer_to_transcriber_queue = queue.SimpleQueue()
     transcriber_to_translator_queue = queue.SimpleQueue()
-    translator_to_exporter_queue = queue.SimpleQueue() if options.get("translation_prompt") else transcriber_to_translator_queue
+    translator_to_exporter_queue = queue.SimpleQueue() if options.get(
+        "translation_prompt") else transcriber_to_translator_queue
 
     audio_getter = create_audio_getter(url, options)
     if controller is not None:

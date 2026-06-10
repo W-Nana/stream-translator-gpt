@@ -130,12 +130,13 @@ class OpenaiWhisper(AudioTranscriber):
         return text, tokens if tokens else None
 
 
-def _apply_hf_proxy(proxy: str):
+def _apply_hf_proxy(proxy: str | None = None, insecure_api_tls: bool = False):
     try:
         import huggingface_hub
         session = huggingface_hub.utils.get_session()
-        session.proxies = {'http': proxy, 'https': proxy}
-        session.verify = False
+        if proxy:
+            session.proxies = {'http': proxy, 'https': proxy}
+        session.verify = not insecure_api_tls
     except Exception:
         pass
 
@@ -149,12 +150,12 @@ def _parse_torch_cuda_arch(arch: str) -> tuple[int, int] | None:
 
 class FasterWhisper(AudioTranscriber):
 
-    def __init__(self, model: str, language: str, proxy: str, **kwargs) -> None:
+    def __init__(self, model: str, language: str, proxy: str, insecure_api_tls: bool = False, **kwargs) -> None:
         super().__init__(**kwargs)
         from faster_whisper import WhisperModel
 
-        if proxy:
-            _apply_hf_proxy(proxy)
+        if proxy or insecure_api_tls:
+            _apply_hf_proxy(proxy, insecure_api_tls=insecure_api_tls)
         print(f'{INFO}Loading Faster-Whisper model: {model}')
         self.model = WhisperModel(model, device='auto', compute_type='auto')
         self.language = language
@@ -171,7 +172,13 @@ class FasterWhisper(AudioTranscriber):
 
 class SimulStreaming(AudioTranscriber):
 
-    def __init__(self, model: str, language: str, use_faster_whisper: bool, proxy: str, **kwargs) -> None:
+    def __init__(self,
+                 model: str,
+                 language: str,
+                 use_faster_whisper: bool,
+                 proxy: str,
+                 insecure_api_tls: bool = False,
+                 **kwargs) -> None:
         super().__init__(**kwargs)
         from .simul_streaming.simulstreaming_whisper import SimulWhisperASR, SimulWhisperOnline
 
@@ -179,8 +186,8 @@ class SimulStreaming(AudioTranscriber):
         if use_faster_whisper:
             print(f'{INFO}Loading Faster-Whisper as encoder for SimulStreaming: {model}')
             from faster_whisper import WhisperModel
-            if proxy:
-                _apply_hf_proxy(proxy)
+            if proxy or insecure_api_tls:
+                _apply_hf_proxy(proxy, insecure_api_tls=insecure_api_tls)
             fw_encoder = WhisperModel(model, device='auto', compute_type='auto')
 
         print(f'{INFO}Loading SimulStreaming model: {model}')
@@ -222,7 +229,7 @@ class SimulStreaming(AudioTranscriber):
 class RemoteOpenaiTranscriber(AudioTranscriber):
     # https://platform.openai.com/docs/api-reference/audio/createTranscription?lang=python
 
-    def __init__(self, model: str, language: str, proxy: str, **kwargs) -> None:
+    def __init__(self, model: str, language: str, proxy: str, insecure_api_tls: bool = False, **kwargs) -> None:
         super().__init__(**kwargs)
         print(f'{INFO}Using {model} API as transcription engine.')
         self.model = model
@@ -250,12 +257,12 @@ class RemoteOpenaiTranscriber(AudioTranscriber):
 
 class HFTranscriber(AudioTranscriber):
 
-    def __init__(self, model: str, language: str, proxy: str, **kwargs) -> None:
+    def __init__(self, model: str, language: str, proxy: str, insecure_api_tls: bool = False, **kwargs) -> None:
         super().__init__(**kwargs)
         from transformers import pipeline
 
-        if proxy:
-            _apply_hf_proxy(proxy)
+        if proxy or insecure_api_tls:
+            _apply_hf_proxy(proxy, insecure_api_tls=insecure_api_tls)
 
         if not os.path.exists(model):
             try:
@@ -290,16 +297,20 @@ class HFTranscriber(AudioTranscriber):
 
 class NemoASRTranscriber(AudioTranscriber):
 
-    def __init__(self, model: str, proxy: str, device: str, decoding: str, **kwargs) -> None:
+    def __init__(self,
+                 model: str,
+                 proxy: str,
+                 device: str,
+                 decoding: str,
+                 insecure_api_tls: bool = False,
+                 **kwargs) -> None:
         super().__init__(**kwargs)
         try:
             import torch
             import nemo.collections.asr as nemo_asr
         except ImportError as e:
-            raise ImportError(
-                'NeMo ASR support requires the nemo_asr extra. Install it with: '
-                'pip install "stream-translator-gpt[nemo_asr]"'
-            ) from e
+            raise ImportError('NeMo ASR support requires the nemo_asr extra. Install it with: '
+                              'pip install "stream-translator-gpt[nemo_asr]"') from e
 
         try:
             from nemo.collections.asr.parts.mixins.transcription import TranscribeConfig
@@ -312,8 +323,8 @@ class NemoASRTranscriber(AudioTranscriber):
 
         self._nemo_logging = nemo_logging
         self._transcribe_config_cls = TranscribeConfig
-        if proxy:
-            _apply_hf_proxy(proxy)
+        if proxy or insecure_api_tls:
+            _apply_hf_proxy(proxy, insecure_api_tls=insecure_api_tls)
 
         self.device = self._normalize_device(torch, device)
         self._validate_cuda_device_supported(torch, self.device)
@@ -421,18 +432,16 @@ class NemoASRTranscriber(AudioTranscriber):
         except RuntimeError as e:
             cudnn.enabled = False
             index, capability = incompatible_device
-            print(
-                f'{WARNING}Disabled cuDNN for NeMo ASR because cuDNN initialization failed on CUDA device '
-                f'{index} SM {capability[0]}.{capability[1]}: {e}. CUDA will still be used.')
+            print(f'{WARNING}Disabled cuDNN for NeMo ASR because cuDNN initialization failed on CUDA device '
+                  f'{index} SM {capability[0]}.{capability[1]}: {e}. CUDA will still be used.')
             return
         if not cudnn_version or cudnn_version < 90000:
             return
 
         index, capability = incompatible_device
         cudnn.enabled = False
-        print(
-            f'{WARNING}Disabled cuDNN for NeMo ASR because cuDNN {cudnn_version} is not compatible '
-            f'with CUDA device {index} SM {capability[0]}.{capability[1]}. CUDA will still be used.')
+        print(f'{WARNING}Disabled cuDNN for NeMo ASR because cuDNN {cudnn_version} is not compatible '
+              f'with CUDA device {index} SM {capability[0]}.{capability[1]}. CUDA will still be used.')
 
     @staticmethod
     def _cuda_device_indices(torch, device) -> list[int]:
@@ -621,20 +630,28 @@ class Qwen3ASRTranscriber(AudioTranscriber):
     }
     SUPPORTED_LANGUAGE_NAMES = set(LANGUAGE_NAMES.values())
 
-    def __init__(self, model: str, language: str, proxy: str, dtype: str, device_map: str, max_new_tokens: int,
-                 quantization: str, bnb_4bit_quant_type: str, bnb_4bit_use_double_quant: bool, **kwargs) -> None:
+    def __init__(self,
+                 model: str,
+                 language: str,
+                 proxy: str,
+                 dtype: str,
+                 device_map: str,
+                 max_new_tokens: int,
+                 quantization: str,
+                 bnb_4bit_quant_type: str,
+                 bnb_4bit_use_double_quant: bool,
+                 insecure_api_tls: bool = False,
+                 **kwargs) -> None:
         super().__init__(**kwargs)
         try:
             import torch
             Qwen3ASRModel = _load_qwen3_asr_model_class()
         except ImportError as e:
-            raise ImportError(
-                'Qwen3-ASR support requires the qwen_asr extra. Install it with: '
-                'pip install "stream-translator-gpt[qwen_asr]"'
-            ) from e
+            raise ImportError('Qwen3-ASR support requires the qwen_asr extra. Install it with: '
+                              'pip install "stream-translator-gpt[qwen_asr]"') from e
 
-        if proxy:
-            _apply_hf_proxy(proxy)
+        if proxy or insecure_api_tls:
+            _apply_hf_proxy(proxy, insecure_api_tls=insecure_api_tls)
 
         self._validate_device_map(torch, device_map)
 
@@ -680,9 +697,8 @@ class Qwen3ASRTranscriber(AudioTranscriber):
             return language_name
 
         supported = ', '.join(sorted(cls.LANGUAGE_NAMES.keys()))
-        raise ValueError(
-            f'Qwen3-ASR does not support language "{language}". '
-            f'Use "auto" or one of these language codes: {supported}.')
+        raise ValueError(f'Qwen3-ASR does not support language "{language}". '
+                         f'Use "auto" or one of these language codes: {supported}.')
 
     @classmethod
     def _validate_device_map(cls, torch, device_map: str | None) -> None:
@@ -692,17 +708,15 @@ class Qwen3ASRTranscriber(AudioTranscriber):
         if device_map == 'auto':
             if not torch.cuda.is_available() or cls._cuda_has_supported_device(torch):
                 return
-            raise RuntimeError(
-                'Current PyTorch CUDA build does not support the available GPU(s) for Qwen3-ASR. '
-                'Install a PyTorch build that supports your GPU compute capability, or explicitly use '
-                '--qwen3_asr_device_map cpu.')
+            raise RuntimeError('Current PyTorch CUDA build does not support the available GPU(s) for Qwen3-ASR. '
+                               'Install a PyTorch build that supports your GPU compute capability, or explicitly use '
+                               '--qwen3_asr_device_map cpu.')
         if device_map.startswith('cuda'):
             if cls._cuda_has_supported_device(torch):
                 return
-            raise RuntimeError(
-                'Current PyTorch CUDA build does not support the available GPU(s) for Qwen3-ASR. '
-                'Install a PyTorch build that supports your GPU compute capability, or explicitly use '
-                '--qwen3_asr_device_map cpu.')
+            raise RuntimeError('Current PyTorch CUDA build does not support the available GPU(s) for Qwen3-ASR. '
+                               'Install a PyTorch build that supports your GPU compute capability, or explicitly use '
+                               '--qwen3_asr_device_map cpu.')
 
     @staticmethod
     def _cuda_has_supported_device(torch) -> bool:
@@ -779,7 +793,9 @@ class Qwen3ASRTranscriber(AudioTranscriber):
         hf_model._stream_translator_pad_token_wrapped = True
 
     def transcribe(self, audio: np.array, initial_prompt: str = None) -> tuple[str, list | None]:
-        results = self.model.transcribe(audio=(audio, SAMPLE_RATE), context=initial_prompt or '', language=self.language)
+        results = self.model.transcribe(audio=(audio, SAMPLE_RATE),
+                                        context=initial_prompt or '',
+                                        language=self.language)
         result = results[0] if results else None
         if result is None:
             return '', None

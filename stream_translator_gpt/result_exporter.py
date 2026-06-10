@@ -1,5 +1,6 @@
 import os
 import queue
+import time
 from urllib.parse import urlencode, urlparse, urlunparse
 
 import requests
@@ -38,11 +39,21 @@ def _format_latency_log(task: TranslationTask) -> str:
 
 
 class ResultExporter(LoopWorkerBase):
+    OUTPUT_WORKER_JOIN_TIMEOUT = 15.0
 
-    def __init__(self, cqhttp_url: str, cqhttp_token: str, discord_webhook_url: str, telegram_token: str,
-                 telegram_chat_id: int, output_file_path: str, proxy: str, output_whisper_result: bool,
-                 output_timestamps: bool, subtitle_share_push_url: str | None = None,
-                 subtitle_share_token: str | None = None, show_latency_log: bool = False) -> None:
+    def __init__(self,
+                 cqhttp_url: str,
+                 cqhttp_token: str,
+                 discord_webhook_url: str,
+                 telegram_token: str,
+                 telegram_chat_id: int,
+                 output_file_path: str,
+                 proxy: str,
+                 output_whisper_result: bool,
+                 output_timestamps: bool,
+                 subtitle_share_push_url: str | None = None,
+                 subtitle_share_token: str | None = None,
+                 show_latency_log: bool = False) -> None:
         self.proxies = {"http": proxy, "https": proxy} if proxy else None
         self.cqhttp_queue = None
         self.discord_queue = None
@@ -54,24 +65,51 @@ class ResultExporter(LoopWorkerBase):
         self.output_whisper_result = output_whisper_result
         self.output_timestamps = output_timestamps
         self.show_latency_log = show_latency_log
+        self.worker_threads = []
         if subtitle_share_push_url and self.subtitle_share_push_url != subtitle_share_push_url:
             print(f"{WARNING}Replaced subtitle share push host with 127.0.0.1: {self.subtitle_share_push_url}")
 
         if cqhttp_url:
             self.cqhttp_queue = queue.SimpleQueue()
-            start_daemon_thread(self._send_message_to_cqhttp, url=cqhttp_url, token=cqhttp_token)
+            self._start_output_worker(self._send_message_to_cqhttp, url=cqhttp_url, token=cqhttp_token)
         if discord_webhook_url:
             self.discord_queue = queue.SimpleQueue()
-            start_daemon_thread(self._send_message_to_discord, webhook_url=discord_webhook_url)
+            self._start_output_worker(self._send_message_to_discord, webhook_url=discord_webhook_url)
         if telegram_token and telegram_chat_id:
             self.telegram_queue = queue.SimpleQueue()
-            start_daemon_thread(self._send_message_to_telegram, token=telegram_token, chat_id=telegram_chat_id)
+            self._start_output_worker(self._send_message_to_telegram, token=telegram_token, chat_id=telegram_chat_id)
         if output_file_path:
             self.file_queue = queue.SimpleQueue()
-            start_daemon_thread(self._write_message_to_file, file_path=output_file_path)
+            self._start_output_worker(self._write_message_to_file, file_path=output_file_path)
         if subtitle_share_push_url and subtitle_share_token:
             self.subtitle_share_queue = queue.SimpleQueue()
-            start_daemon_thread(self._send_event_to_subtitle_share)
+            self._start_output_worker(self._send_event_to_subtitle_share)
+
+    def _start_output_worker(self, func, *args, **kwargs):
+        thread = start_daemon_thread(func, *args, **kwargs)
+        self.worker_threads.append(thread)
+        return thread
+
+    def _send_stop_to_output_workers(self):
+        if self.cqhttp_queue:
+            self.cqhttp_queue.put(None)
+        if self.discord_queue:
+            self.discord_queue.put(None)
+        if self.telegram_queue:
+            self.telegram_queue.put(None)
+        if self.file_queue:
+            self.file_queue.put(None)
+        if self.subtitle_share_queue:
+            self.subtitle_share_queue.put({"event": "status", "data": {"status": "completed", "code": 0}})
+            self.subtitle_share_queue.put(None)
+
+    def _join_output_workers(self):
+        deadline = time.monotonic() + self.OUTPUT_WORKER_JOIN_TIMEOUT
+        for thread in self.worker_threads:
+            timeout = max(0.0, deadline - time.monotonic())
+            thread.join(timeout=timeout)
+            if thread.is_alive():
+                print(f"{WARNING}Output worker did not finish within {self.OUTPUT_WORKER_JOIN_TIMEOUT:.0f}s.")
 
     def _send_message_to_cqhttp(self, url: str, token: str):
         headers = {'Authorization': f'Bearer {token}'} if token else None
@@ -139,17 +177,8 @@ class ResultExporter(LoopWorkerBase):
         while True:
             task = input_queue.get()
             if task is None:
-                if self.cqhttp_queue:
-                    self.cqhttp_queue.put(None)
-                if self.discord_queue:
-                    self.discord_queue.put(None)
-                if self.telegram_queue:
-                    self.telegram_queue.put(None)
-                if self.file_queue:
-                    self.file_queue.put(None)
-                if self.subtitle_share_queue:
-                    self.subtitle_share_queue.put({"event": "status", "data": {"status": "completed", "code": 0}})
-                    self.subtitle_share_queue.put(None)
+                self._send_stop_to_output_workers()
+                self._join_output_workers()
                 break
             timestamp_text = f'{sec2str(task.time_range[0])} --> {sec2str(task.time_range[1])}'
             text_to_send = (task.transcript + '\n') if self.output_whisper_result else ''
@@ -180,8 +209,7 @@ class ResultExporter(LoopWorkerBase):
                 self.file_queue.put(text_to_send)
             if self.subtitle_share_queue:
                 subtitle_timestamp = (
-                    f'{format_srt_timestamp(task.time_range[0])} -> {format_srt_timestamp(task.time_range[1])}'
-                )
+                    f'{format_srt_timestamp(task.time_range[0])} -> {format_srt_timestamp(task.time_range[1])}')
                 self.subtitle_share_queue.put({
                     "event": "subtitle",
                     "data": {

@@ -71,7 +71,7 @@ def sec2str(second: float):
 class ClientPool:
 
     @classmethod
-    def init(cls, openai_api_key, google_api_key, proxy=None, google_base_url=None):
+    def init(cls, openai_api_key, google_api_key, proxy=None, google_base_url=None, insecure_api_tls=False):
         cls._openai_clients = []
         cls._openai_index = 0
         if openai_api_key:
@@ -79,16 +79,24 @@ class ClientPool:
             import httpx
             for key in openai_api_key.split(','):
                 key = key.strip()
-                client = OpenAI(api_key=key, http_client=httpx.Client(proxy=proxy, verify=False))
+                http_client_args = {'verify': not insecure_api_tls}
+                if proxy:
+                    http_client_args['proxy'] = proxy
+                client = OpenAI(api_key=key, http_client=httpx.Client(**http_client_args))
                 cls._openai_clients.append(client)
 
         cls._google_clients = []
         cls._google_index = 0
         if google_api_key:
             from google import genai
-            http_options = {'client_args': {'verify': False}}
+            client_args = {}
             if proxy:
-                http_options['client_args']['proxy'] = proxy
+                client_args['proxy'] = proxy
+            if insecure_api_tls:
+                client_args['verify'] = False
+            http_options = {}
+            if client_args:
+                http_options['client_args'] = client_args
             if google_base_url:
                 http_options['base_url'] = google_base_url
             for key in google_api_key.split(','):

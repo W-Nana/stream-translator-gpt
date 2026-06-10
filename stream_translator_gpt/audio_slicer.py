@@ -52,9 +52,8 @@ class FireRedVADAdapter:
         try:
             from omnivad import OmniStreamVAD
         except ImportError as e:
-            raise RuntimeError(
-                'FireRedVAD backend requires OmniVAD. Install it with: '
-                'pip install stream-translator-gpt[firered_vad]') from e
+            raise RuntimeError('FireRedVAD backend requires OmniVAD. Install it with: '
+                               'pip install stream-translator-gpt[firered_vad]') from e
 
         model_path = model_path.strip() if isinstance(model_path, str) else model_path
         if model_path == '' or model_path == 'auto':
@@ -116,13 +115,20 @@ def _get_dynamic_no_speech_threshold(audio_length: float, initial_threshold: flo
 
 class AudioSlicer(LoopWorkerBase):
 
-    def __init__(self, min_audio_length: float, max_audio_length: float, target_audio_length: float,
-                 continuous_no_speech_threshold: float, dynamic_no_speech_threshold: bool,
-                 prefix_retention_length: float, vad_threshold: float, dynamic_vad_threshold: bool,
-                 vad_backend: str = 'silero', firered_vad_model_path: str | None = None):
+    def __init__(self,
+                 min_audio_length: float,
+                 max_audio_length: float,
+                 target_audio_length: float,
+                 continuous_no_speech_threshold: float,
+                 dynamic_no_speech_threshold: bool,
+                 prefix_retention_length: float,
+                 vad_threshold: float,
+                 dynamic_vad_threshold: bool,
+                 vad_backend: str = 'silero',
+                 firered_vad_model_path: str | None = None):
         self.min_audio_length = min_audio_length
         self.max_audio_length = max_audio_length
-        self.prefix_retention_count = round(prefix_retention_length / FRAME_DURATION)
+        self.prefix_retention_count = max(0, round(prefix_retention_length / FRAME_DURATION))
         self.target_audio_length = target_audio_length
         self.dynamic_no_speech_threshold = dynamic_no_speech_threshold
         if self.dynamic_no_speech_threshold:
@@ -195,7 +201,10 @@ class AudioSlicer(LoopWorkerBase):
         concatenate_buffer = self.prefix_audio_buffer + self.audio_buffer
         concatenate_audio = np.concatenate(concatenate_buffer)
         self.audio_buffer = []
-        self.prefix_audio_buffer = concatenate_buffer[-self.prefix_retention_count:]
+        if self.prefix_retention_count > 0:
+            self.prefix_audio_buffer = concatenate_buffer[-self.prefix_retention_count:]
+        else:
+            self.prefix_audio_buffer = []
         self.speech_count = 0
         self.no_speech_count = 0
         self.continuous_no_speech_count = 0
@@ -209,6 +218,10 @@ class AudioSlicer(LoopWorkerBase):
         while True:
             audio = input_queue.get()
             if audio is None:
+                if self.speech_count and self.audio_buffer:
+                    sliced_audio, time_range = self.slice()
+                    task = TranslationTask(sliced_audio, time_range)
+                    output_queue.put(task)
                 output_queue.put(None)
                 break
             self.put(audio)

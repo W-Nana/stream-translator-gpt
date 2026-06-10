@@ -137,8 +137,7 @@ class LLMTranslator(LoopWorkerBase):
     def _retrigger_failed_tasks(self):
         now = datetime.now(timezone.utc)
         for task in self.processing_queue:
-            if task.translation_failed and task.llm_latency_ms is not None and not _is_task_timeout(
-                    task, self.timeout):
+            if task.translation_failed and task.llm_latency_ms is not None and not _is_task_timeout(task, self.timeout):
                 next_retry_time = getattr(task, 'next_retry_time', None)
                 if next_retry_time is not None and now < next_retry_time:
                     continue
@@ -151,10 +150,10 @@ class LLMTranslator(LoopWorkerBase):
     def _get_results(self):
         results = []
         while self.processing_queue and (
-                (self.processing_queue[0].translation and self.processing_queue[0].llm_latency_ms is not None)
-                or _is_task_timeout(self.processing_queue[0], self.timeout) or
-            (self.processing_queue[0].translation_failed and self.processing_queue[0].llm_latency_ms is not None
-             and not self.retry_if_translation_fails)):
+            (self.processing_queue[0].translation and self.processing_queue[0].llm_latency_ms is not None) or
+                _is_task_timeout(self.processing_queue[0], self.timeout) or
+            (self.processing_queue[0].translation_failed and self.processing_queue[0].llm_latency_ms is not None and
+             not self.retry_if_translation_fails)):
             task = self.processing_queue.popleft()
             if not task.translation:
                 if _is_task_timeout(task, self.timeout):
@@ -165,24 +164,30 @@ class LLMTranslator(LoopWorkerBase):
             results.append(task)
         return results
 
+    def _emit_finished_tasks(self, output_queue: queue.SimpleQueue[TranslationTask]):
+        finished_tasks = self._get_results()
+        for task in finished_tasks:
+            output_queue.put(task)
+
+    def _drain_processing_queue(self, output_queue: queue.SimpleQueue[TranslationTask]):
+        while len(self.processing_queue) > 0:
+            self._emit_finished_tasks(output_queue)
+            if self.retry_if_translation_fails:
+                self._retrigger_failed_tasks()
+            time.sleep(0.1)
+
     def loop(self, input_queue: queue.SimpleQueue[TranslationTask], output_queue: queue.SimpleQueue[TranslationTask]):
         while True:
             if not input_queue.empty() and len(self.processing_queue) < self.PARALLEL_MAX_NUMBER:
                 task = input_queue.get()
                 if task is None:
-                    while len(self.processing_queue) > 0:
-                        finished_tasks = self._get_results()
-                        for task in finished_tasks:
-                            output_queue.put(task)
-                        time.sleep(0.1)
+                    self._drain_processing_queue(output_queue)
                     output_queue.put(None)
                     break
                 self._prepare_context(task)
                 self.processing_queue.append(task)
                 self._trigger(task)
-            finished_tasks = self._get_results()
-            for task in finished_tasks:
-                output_queue.put(task)
+            self._emit_finished_tasks(output_queue)
             if self.retry_if_translation_fails:
                 self._retrigger_failed_tasks()
             time.sleep(0.1)

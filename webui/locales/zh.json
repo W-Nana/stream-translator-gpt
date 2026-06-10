@@ -12,6 +12,7 @@
     "show_api_keys": "显示 API Keys",
     "overall_proxy": "全局代理",
     "overall_proxy_ph": "http://127.0.0.1:7890",
+    "insecure_api_tls": "禁用 API TLS 验证（仅限可信代理）",
     "input": "输入",
     "input_source": "输入源",
     "stream_url": "直播 URL",

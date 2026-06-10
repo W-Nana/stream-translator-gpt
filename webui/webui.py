@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 import threading
+from urllib.parse import urlsplit, urlunsplit
 
 import gradio as gr
 import platformdirs
@@ -21,7 +22,7 @@ from stream_translator_gpt import __version__
 from stream_translator_gpt.asr_preload import PreloadedTranscriberManager, build_asr_config
 from stream_translator_gpt.pipeline_runner import PipelineController, run_inprocess_pipeline
 from stream_translator_gpt.subtitle_sharing import (DEFAULT_PUBLIC_HOST, DEFAULT_PUBLIC_PORT, SubtitleShareServer,
-                                                   create_task_id)
+                                                    create_task_id)
 
 
 class I18n:
@@ -90,14 +91,13 @@ os.makedirs(USER_PRESETS_DIR, exist_ok=True)
 
 INPUT_KEYS = [
     "input_type", "input_url", "device_rec_interval", "audio_source", "input_file", "input_format", "input_cookies",
-    "input_proxy", "openai_key", "google_key", "openai_base_url", "google_base_url", "overall_proxy", "model_size",
-    "hf_model_name", "qwen3_asr_model", "qwen3_asr_dtype", "qwen3_asr_device_map",
+    "input_proxy", "openai_key", "google_key", "openai_base_url", "google_base_url", "overall_proxy",
+    "insecure_api_tls", "model_size", "hf_model_name", "qwen3_asr_model", "qwen3_asr_dtype", "qwen3_asr_device_map",
     "qwen3_asr_max_new_tokens", "qwen3_asr_quantization", "qwen3_asr_bnb_4bit_quant_type",
-    "qwen3_asr_bnb_4bit_use_double_quant", "nemo_asr_model", "nemo_asr_device", "nemo_asr_decoding",
-    "language", "whisper_backend", "openai_transcription_model", "vad_backend", "firered_vad_model_path",
-    "vad_threshold", "min_audio_len", "max_audio_len", "target_audio_len", "silence_threshold",
-    "disable_dynamic_vad", "disable_dynamic_silence", "prefix_retention_len", "filter_emoji", "filter_repetition",
-    "filter_japanese_stream",
+    "qwen3_asr_bnb_4bit_use_double_quant", "nemo_asr_model", "nemo_asr_device", "nemo_asr_decoding", "language",
+    "whisper_backend", "openai_transcription_model", "vad_backend", "firered_vad_model_path", "vad_threshold",
+    "min_audio_len", "max_audio_len", "target_audio_len", "silence_threshold", "disable_dynamic_vad",
+    "disable_dynamic_silence", "prefix_retention_len", "filter_emoji", "filter_repetition", "filter_japanese_stream",
     "disable_transcription_context", "transcription_initial_prompt", "translation_prompt", "translation_provider",
     "gpt_model", "gemini_model", "history_size", "translation_timeout", "processing_proxy", "use_json_result",
     "retry_if_translation_fails", "show_timestamps", "show_latency_log", "hide_transcription", "output_file",
@@ -323,6 +323,7 @@ def build_translator_command(
         openai_key,
         google_key,
         overall_proxy,
+        insecure_api_tls,
         model_size,
         language,
         whisper_backend,
@@ -485,8 +486,7 @@ def build_translator_command(
         add_arg("--qwen3_asr_device_map", qwen3_asr_device_map, "qwen3_asr_device_map")
         add_arg("--qwen3_asr_max_new_tokens", qwen3_asr_max_new_tokens, "qwen3_asr_max_new_tokens")
         add_arg("--qwen3_asr_quantization", qwen3_asr_quantization, "qwen3_asr_quantization")
-        add_arg("--qwen3_asr_bnb_4bit_quant_type", qwen3_asr_bnb_4bit_quant_type,
-                "qwen3_asr_bnb_4bit_quant_type")
+        add_arg("--qwen3_asr_bnb_4bit_quant_type", qwen3_asr_bnb_4bit_quant_type, "qwen3_asr_bnb_4bit_quant_type")
         if qwen3_asr_bnb_4bit_use_double_quant:
             cmd.append("--qwen3_asr_bnb_4bit_use_double_quant")
     elif whisper_backend == "NeMo ASR":
@@ -558,6 +558,8 @@ def build_translator_command(
     # --- Overall ---
     if overall_proxy:
         cmd.extend(["--proxy", overall_proxy])
+    if insecure_api_tls:
+        cmd.append("--insecure_api_tls")
 
     # --- Extra CLI Args ---
     if extra_cli_args and extra_cli_args.strip():
@@ -586,8 +588,39 @@ def get_subprocess_env():
     return env
 
 
+SENSITIVE_LOG_FLAGS = {
+    "--subtitle_share_token",
+    "--openai_api_key",
+    "--google_api_key",
+    "--telegram_token",
+    "--cqhttp_token",
+    "--discord_webhook_url",
+}
+
+
+def redact_url_credentials(value):
+    if not isinstance(value, str) or "://" not in value:
+        return value
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return value
+    if not parsed.scheme or not parsed.netloc or (parsed.username is None and parsed.password is None):
+        return value
+    host = parsed.hostname
+    if not host:
+        return value
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    netloc = f"***@{host}"
+    if port is not None:
+        netloc = f"{netloc}:{port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
+
+
 def format_command_for_log(cmd):
-    redacted_flags = {"--subtitle_share_token"}
+    redacted_flags = SENSITIVE_LOG_FLAGS
     log_cmd = []
     redact_next = False
     for part in cmd:
@@ -595,11 +628,15 @@ def format_command_for_log(cmd):
             log_cmd.append("***")
             redact_next = False
             continue
-        if part.startswith("--subtitle_share_token="):
-            log_cmd.append("--subtitle_share_token=***")
+        flag, sep, value = part.partition("=")
+        if part.startswith("--") and sep and flag in redacted_flags:
+            log_cmd.append(f"{flag}=***")
             continue
-        log_cmd.append(part)
-        if part in redacted_flags:
+        if part.startswith("--") and sep:
+            log_cmd.append(f"{flag}={redact_url_credentials(value)}")
+            continue
+        log_cmd.append(redact_url_credentials(part))
+        if flag in redacted_flags:
             redact_next = True
     return subprocess.list2cmdline(log_cmd)
 
@@ -621,13 +658,12 @@ def int_optional(value):
 
 
 def build_asr_options_from_values(model_size, language, whisper_backend, openai_transcription_model, hf_model_name,
-                                  qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map,
-                                  qwen3_asr_max_new_tokens, qwen3_asr_quantization,
-                                  qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant,
-                                  nemo_asr_model, nemo_asr_device, nemo_asr_decoding, filter_emoji,
-                                  filter_repetition, filter_japanese_stream, disable_transcription_context,
-                                  transcription_initial_prompt, processing_proxy, show_timestamps,
-                                  hide_transcription):
+                                  qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens,
+                                  qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type,
+                                  qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device,
+                                  nemo_asr_decoding, filter_emoji, filter_repetition, filter_japanese_stream,
+                                  disable_transcription_context, transcription_initial_prompt, processing_proxy,
+                                  insecure_api_tls, show_timestamps, hide_transcription):
     transcription_filters = []
     if filter_emoji:
         transcription_filters.append("emoji_filter")
@@ -672,6 +708,7 @@ def build_asr_options_from_values(model_size, language, whisper_backend, openai_
         "disable_transcription_context": bool(disable_transcription_context),
         "transcription_initial_prompt": clean_optional(transcription_initial_prompt),
         "processing_proxy": clean_optional(processing_proxy),
+        "insecure_api_tls": bool(insecure_api_tls),
         "output_timestamps": bool(show_timestamps),
         "hide_transcribe_result": bool(hide_transcription),
     }
@@ -679,16 +716,17 @@ def build_asr_options_from_values(model_size, language, whisper_backend, openai_
 
 def build_runtime_options_from_values(
         input_type, url, device_rec_interval, audio_source, file_path, input_format, input_cookies, input_proxy,
-        openai_key, google_key, overall_proxy, model_size, language, whisper_backend, openai_transcription_model,
-        hf_model_name, qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens,
-        qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model,
-        nemo_asr_device, nemo_asr_decoding, vad_backend, firered_vad_model_path, vad_threshold, min_audio_len,
-        max_audio_len, target_audio_len, silence_threshold, disable_dynamic_vad, disable_dynamic_silence,
-        prefix_retention_len, filter_emoji, filter_repetition, filter_japanese_stream, disable_transcription_context,
-        transcription_initial_prompt, translation_prompt, translation_provider, gpt_model, gemini_model, history_size,
-        translation_timeout, openai_base_url, google_base_url, processing_proxy, use_json_result,
-        retry_if_translation_fails, show_timestamps, show_latency_log, hide_transcription, output_file, output_proxy,
-        cqhttp_url, cqhttp_token, discord_hook, telegram_token, telegram_chat_id):
+        openai_key, google_key, overall_proxy, insecure_api_tls, model_size, language, whisper_backend,
+        openai_transcription_model, hf_model_name, qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map,
+        qwen3_asr_max_new_tokens, qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type,
+        qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device, nemo_asr_decoding, vad_backend,
+        firered_vad_model_path, vad_threshold, min_audio_len, max_audio_len, target_audio_len, silence_threshold,
+        disable_dynamic_vad, disable_dynamic_silence, prefix_retention_len, filter_emoji, filter_repetition,
+        filter_japanese_stream, disable_transcription_context, transcription_initial_prompt, translation_prompt,
+        translation_provider, gpt_model, gemini_model, history_size, translation_timeout, openai_base_url,
+        google_base_url, processing_proxy, use_json_result, retry_if_translation_fails, show_timestamps,
+        show_latency_log, hide_transcription, output_file, output_proxy, cqhttp_url, cqhttp_token, discord_hook,
+        telegram_token, telegram_chat_id):
     if input_type == "URL":
         target_url = clean_optional(url)
         if not target_url:
@@ -711,7 +749,7 @@ def build_runtime_options_from_values(
         qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
         qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device,
         nemo_asr_decoding, filter_emoji, filter_repetition, filter_japanese_stream, disable_transcription_context,
-        transcription_initial_prompt, effective_processing_proxy, show_timestamps, hide_transcription)
+        transcription_initial_prompt, effective_processing_proxy, insecure_api_tls, show_timestamps, hide_transcription)
 
     if translation_provider == "None":
         translation_prompt = None
@@ -740,6 +778,7 @@ def build_runtime_options_from_values(
         "google_api_key": clean_optional(google_key) if translation_provider == "Gemini" else None,
         "openai_base_url": clean_optional(openai_base_url),
         "google_base_url": clean_optional(google_base_url),
+        "insecure_api_tls": bool(insecure_api_tls),
         "translation_prompt": clean_optional(translation_prompt),
         "gpt_model": clean_optional(gpt_model),
         "gemini_model": clean_optional(gemini_model),
@@ -793,10 +832,10 @@ def get_preloaded_asr_status():
 def preload_asr_model_from_ui(model_size, language, whisper_backend, openai_transcription_model, hf_model_name,
                               qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens,
                               qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type,
-                              qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device,
-                              nemo_asr_decoding, filter_emoji, filter_repetition, filter_japanese_stream,
-                              disable_transcription_context, transcription_initial_prompt, processing_proxy,
-                              show_timestamps, hide_transcription):
+                              qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device, nemo_asr_decoding,
+                              filter_emoji, filter_repetition, filter_japanese_stream, disable_transcription_context,
+                              transcription_initial_prompt, processing_proxy, insecure_api_tls, show_timestamps,
+                              hide_transcription):
     if is_running:
         return "A task is running. Stop it before preloading an ASR model."
     try:
@@ -804,9 +843,8 @@ def preload_asr_model_from_ui(model_size, language, whisper_backend, openai_tran
             model_size, language, whisper_backend, openai_transcription_model, hf_model_name, qwen3_asr_model,
             qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
             qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device,
-            nemo_asr_decoding, filter_emoji, filter_repetition, filter_japanese_stream,
-            disable_transcription_context, transcription_initial_prompt, processing_proxy, show_timestamps,
-            hide_transcription)
+            nemo_asr_decoding, filter_emoji, filter_repetition, filter_japanese_stream, disable_transcription_context,
+            transcription_initial_prompt, processing_proxy, insecure_api_tls, show_timestamps, hide_transcription)
         message = preloaded_asr_manager.preload(build_asr_config(options))
         return f"{message}\n{preloaded_asr_manager.status_text()}"
     except Exception as e:
@@ -865,7 +903,8 @@ def run_preloaded_translator_inprocess(target_url, options, transcriber, enable_
 
         def worker():
             try:
-                with contextlib.redirect_stdout(QueueWriter(log_queue)), contextlib.redirect_stderr(QueueWriter(log_queue)):
+                with contextlib.redirect_stdout(QueueWriter(log_queue)), contextlib.redirect_stderr(
+                        QueueWriter(log_queue)):
                     result["code"] = run_inprocess_pipeline(target_url,
                                                             options,
                                                             transcriber,
@@ -928,6 +967,7 @@ def run_translator(
         openai_key,
         google_key,
         overall_proxy,
+        insecure_api_tls,
         # Transcription
         model_size,
         language,
@@ -1015,17 +1055,17 @@ def run_translator(
             return
         target_url, runtime_options, runtime_error = build_runtime_options_from_values(
             input_type, url, device_rec_interval, audio_source, file_path, input_format, input_cookies, input_proxy,
-            openai_key, google_key, overall_proxy, model_size, language, whisper_backend, openai_transcription_model,
-            hf_model_name, qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens,
-            qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant,
-            nemo_asr_model, nemo_asr_device, nemo_asr_decoding, vad_backend, firered_vad_model_path, vad_threshold,
-            min_audio_len, max_audio_len, target_audio_len, silence_threshold, disable_dynamic_vad,
-            disable_dynamic_silence, prefix_retention_len, filter_emoji, filter_repetition, filter_japanese_stream,
-            disable_transcription_context, transcription_initial_prompt, translation_prompt, translation_provider,
-            gpt_model, gemini_model, history_size, translation_timeout, openai_base_url, google_base_url,
-            processing_proxy, use_json_result, retry_if_translation_fails, show_timestamps, show_latency_log,
-            hide_transcription, output_file, output_proxy, cqhttp_url, cqhttp_token, discord_hook, telegram_token,
-            telegram_chat_id)
+            openai_key, google_key, overall_proxy, insecure_api_tls, model_size, language, whisper_backend,
+            openai_transcription_model, hf_model_name, qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map,
+            qwen3_asr_max_new_tokens, qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type,
+            qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device, nemo_asr_decoding, vad_backend,
+            firered_vad_model_path, vad_threshold, min_audio_len, max_audio_len, target_audio_len, silence_threshold,
+            disable_dynamic_vad, disable_dynamic_silence, prefix_retention_len, filter_emoji, filter_repetition,
+            filter_japanese_stream, disable_transcription_context, transcription_initial_prompt, translation_prompt,
+            translation_provider, gpt_model, gemini_model, history_size, translation_timeout, openai_base_url,
+            google_base_url, processing_proxy, use_json_result, retry_if_translation_fails, show_timestamps,
+            show_latency_log, hide_transcription, output_file, output_proxy, cqhttp_url, cqhttp_token, discord_hook,
+            telegram_token, telegram_chat_id)
         if runtime_error:
             yield runtime_error
             return
@@ -1035,8 +1075,8 @@ def run_translator(
             yield f"Error: {e}\n{preloaded_asr_manager.status_text()}\n"
             return
         is_running = True
-        yield from run_preloaded_translator_inprocess(target_url, runtime_options, transcriber,
-                                                     enable_subtitle_sharing, public_host, public_port)
+        yield from run_preloaded_translator_inprocess(target_url, runtime_options, transcriber, enable_subtitle_sharing,
+                                                      public_host, public_port)
         return
 
     if enable_subtitle_sharing:
@@ -1059,6 +1099,7 @@ def run_translator(
                                           openai_key=openai_key,
                                           google_key=google_key,
                                           overall_proxy=overall_proxy,
+                                          insecure_api_tls=insecure_api_tls,
                                           model_size=model_size,
                                           language=language,
                                           whisper_backend=whisper_backend,
@@ -1280,9 +1321,7 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
             whisper_backend = gr.Radio(choices=[
                 ("Whisper", "Whisper"), ("Faster-Whisper", "Faster-Whisper"), ("Simul-Streaming", "Simul-Streaming"),
                 ("Faster-Whisper & Simul-Streaming", "Faster-Whisper & Simul-Streaming"),
-                ("HuggingFace ASR", "HuggingFace ASR"),
-                ("Qwen3-ASR", "Qwen3-ASR"),
-                ("NeMo ASR", "NeMo ASR"),
+                ("HuggingFace ASR", "HuggingFace ASR"), ("Qwen3-ASR", "Qwen3-ASR"), ("NeMo ASR", "NeMo ASR"),
                 (i18n.get("openai_transcription_api_option"), "OpenAI Transcription API")
             ],
                                        label=i18n.get("transcription_type"),
@@ -1326,10 +1365,10 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                         "auto", "af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br", "bs", "ca", "cs",
                         "cy", "da", "de", "el", "en", "es", "et", "eu", "fa", "fi", "fo", "fr", "gl", "gu", "ha", "haw",
                         "he", "hi", "hr", "ht", "hu", "hy", "id", "is", "it", "ja", "jw", "ka", "kk", "km", "kn", "ko",
-                        "la", "lb", "ln", "lo", "lt", "lv", "fil", "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my", "ne",
-                        "nl", "nn", "no", "oc", "pa", "pl", "ps", "pt", "ro", "ru", "sa", "sd", "si", "sk", "sl", "sn",
-                        "so", "sq", "sr", "su", "sv", "sw", "ta", "te", "tg", "th", "tk", "tl", "tr", "tt", "uk", "ur",
-                        "uz", "vi", "yi", "yo", "yue", "zh"
+                        "la", "lb", "ln", "lo", "lt", "lv", "fil", "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my",
+                        "ne", "nl", "nn", "no", "oc", "pa", "pl", "ps", "pt", "ro", "ru", "sa", "sd", "si", "sk", "sl",
+                        "sn", "so", "sq", "sr", "su", "sv", "sw", "ta", "te", "tg", "th", "tk", "tl", "tr", "tt", "uk",
+                        "ur", "uz", "vi", "yi", "yo", "yue", "zh"
                     ],
                     label=i18n.get("language"),
                     value=get_default("language"),
@@ -1337,10 +1376,10 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                     info="[Available Languages](https://github.com/openai/whisper#available-models-and-languages)")
             with gr.Row():
                 qwen3_asr_dtype = gr.Dropdown(["bfloat16", "float16", "float32"],
-                                             label=i18n.get("qwen3_asr_dtype"),
-                                             value=get_default("qwen3_asr_dtype"),
-                                             visible=False,
-                                             allow_custom_value=True)
+                                              label=i18n.get("qwen3_asr_dtype"),
+                                              value=get_default("qwen3_asr_dtype"),
+                                              visible=False,
+                                              allow_custom_value=True)
                 qwen3_asr_device_map = gr.Dropdown(["auto", "cuda:0", "cuda:1", "cpu"],
                                                    label=i18n.get("qwen3_asr_device_map"),
                                                    value=get_default("qwen3_asr_device_map"),
@@ -1351,15 +1390,15 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                                                      visible=False,
                                                      precision=0)
                 nemo_asr_device = gr.Dropdown(["auto", "cuda:0", "cuda:1", "cpu"],
-                                             label=i18n.get("nemo_asr_device"),
-                                             value=get_default("nemo_asr_device"),
-                                             visible=False,
-                                             allow_custom_value=True)
+                                              label=i18n.get("nemo_asr_device"),
+                                              value=get_default("nemo_asr_device"),
+                                              visible=False,
+                                              allow_custom_value=True)
                 nemo_asr_decoding = gr.Dropdown(["tdt", "ctc"],
-                                               label=i18n.get("nemo_asr_decoding"),
-                                               value=get_default("nemo_asr_decoding"),
-                                               visible=False,
-                                               allow_custom_value=False)
+                                                label=i18n.get("nemo_asr_decoding"),
+                                                value=get_default("nemo_asr_decoding"),
+                                                visible=False,
+                                                allow_custom_value=False)
             with gr.Row():
                 qwen3_asr_quantization = gr.Dropdown(["none", "bnb_8bit", "bnb_4bit"],
                                                      label=i18n.get("qwen3_asr_quantization"),
@@ -1499,6 +1538,8 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
                                         lines=2)
 
             overall_proxy = gr.Textbox(label=i18n.get("overall_proxy"), placeholder=i18n.get("overall_proxy_ph"))
+            insecure_api_tls = gr.Checkbox(label=i18n.get("insecure_api_tls"),
+                                           value=get_default("insecure_api_tls", False))
 
     with gr.Row():
         with gr.Column(scale=1):
@@ -1559,35 +1600,49 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
         qwen_visible = (choice == "Qwen3-ASR")
         nemo_visible = (choice == "NeMo ASR")
         return {
-            openai_transcription_model: gr.update(visible=openai_visible),
-            model_size: gr.update(visible=not openai_visible and not hf_visible and not qwen_visible and not nemo_visible),
-            openai_transcription_group: gr.update(visible=openai_visible),
-            hf_model_name: gr.update(visible=hf_visible),
-            qwen3_asr_model: gr.update(visible=qwen_visible),
-            qwen3_asr_dtype: gr.update(visible=qwen_visible),
-            qwen3_asr_device_map: gr.update(visible=qwen_visible),
-            qwen3_asr_max_new_tokens: gr.update(visible=qwen_visible),
-            qwen3_asr_quantization: gr.update(visible=qwen_visible),
-            qwen3_asr_bnb_4bit_quant_type: gr.update(visible=qwen_visible),
-            qwen3_asr_bnb_4bit_use_double_quant: gr.update(visible=qwen_visible),
-            nemo_asr_model: gr.update(visible=nemo_visible),
-            nemo_asr_device: gr.update(visible=nemo_visible),
-            nemo_asr_decoding: gr.update(visible=nemo_visible),
+            openai_transcription_model:
+                gr.update(visible=openai_visible),
+            model_size:
+                gr.update(visible=not openai_visible and not hf_visible and not qwen_visible and not nemo_visible),
+            openai_transcription_group:
+                gr.update(visible=openai_visible),
+            hf_model_name:
+                gr.update(visible=hf_visible),
+            qwen3_asr_model:
+                gr.update(visible=qwen_visible),
+            qwen3_asr_dtype:
+                gr.update(visible=qwen_visible),
+            qwen3_asr_device_map:
+                gr.update(visible=qwen_visible),
+            qwen3_asr_max_new_tokens:
+                gr.update(visible=qwen_visible),
+            qwen3_asr_quantization:
+                gr.update(visible=qwen_visible),
+            qwen3_asr_bnb_4bit_quant_type:
+                gr.update(visible=qwen_visible),
+            qwen3_asr_bnb_4bit_use_double_quant:
+                gr.update(visible=qwen_visible),
+            nemo_asr_model:
+                gr.update(visible=nemo_visible),
+            nemo_asr_device:
+                gr.update(visible=nemo_visible),
+            nemo_asr_decoding:
+                gr.update(visible=nemo_visible),
         }
 
-    whisper_backend.change(update_backend_visibility, whisper_backend,
-                           [openai_transcription_model, model_size, openai_transcription_group, hf_model_name,
-                            qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens,
-                            qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type,
-                            qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device,
-                            nemo_asr_decoding])
+    whisper_backend.change(update_backend_visibility, whisper_backend, [
+        openai_transcription_model, model_size, openai_transcription_group, hf_model_name, qwen3_asr_model,
+        qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
+        qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device,
+        nemo_asr_decoding
+    ])
 
     preload_asr_inputs = [
         model_size, language, whisper_backend, openai_transcription_model, hf_model_name, qwen3_asr_model,
         qwen3_asr_dtype, qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
         qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device,
         nemo_asr_decoding, filter_emoji, filter_repetition, filter_japanese_stream, disable_transcription_context,
-        transcription_initial_prompt, processing_proxy_trans, show_timestamps, hide_transcription
+        transcription_initial_prompt, processing_proxy_trans, insecure_api_tls, show_timestamps, hide_transcription
     ]
     preload_asr_btn.click(preload_asr_model_from_ui,
                           inputs=preload_asr_inputs,
@@ -1646,26 +1701,25 @@ with gr.Blocks(title="Stream Translator GPT WebUI") as demo:
     ui_language.change(on_language_change, inputs=[ui_language], outputs=[ui_language], js=js_lang_change)
 
     # Start Action
-    start_btn.click(run_translator,
-                    inputs=[
-                        input_type, input_url, device_rec_interval, audio_source, input_file, input_format,
-                        input_cookies, input_proxy, openai_key, google_key, overall_proxy, model_size, language,
-                        whisper_backend, openai_transcription_model, hf_model_name, qwen3_asr_model, qwen3_asr_dtype,
-                        qwen3_asr_device_map, qwen3_asr_max_new_tokens, qwen3_asr_quantization,
-                        qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model,
-                        nemo_asr_device, nemo_asr_decoding, vad_backend, firered_vad_model_path, vad_threshold,
-                        min_audio_len, max_audio_len, target_audio_len, silence_threshold, disable_dynamic_vad,
-                        disable_dynamic_silence, prefix_retention_len, filter_emoji, filter_repetition,
-                        filter_japanese_stream, disable_transcription_context, transcription_initial_prompt,
-                        translation_prompt, translation_provider, gpt_model, gemini_model, history_size,
-                        translation_timeout, openai_base_url, google_base_url, processing_proxy, use_json_result,
-                        retry_if_translation_fails, show_timestamps, show_latency_log, hide_transcription, output_file,
-                        output_proxy, cqhttp_url, cqhttp_token, discord_hook, telegram_token, telegram_chat_id,
-                        enable_subtitle_sharing, public_host, public_port, extra_cli_args
-                    ],
-                    outputs=output_box,
-                    concurrency_limit=1,
-                    scroll_to_output=False)
+    start_btn.click(
+        run_translator,
+        inputs=[
+            input_type, input_url, device_rec_interval, audio_source, input_file, input_format, input_cookies,
+            input_proxy, openai_key, google_key, overall_proxy, insecure_api_tls, model_size, language, whisper_backend,
+            openai_transcription_model, hf_model_name, qwen3_asr_model, qwen3_asr_dtype, qwen3_asr_device_map,
+            qwen3_asr_max_new_tokens, qwen3_asr_quantization, qwen3_asr_bnb_4bit_quant_type,
+            qwen3_asr_bnb_4bit_use_double_quant, nemo_asr_model, nemo_asr_device, nemo_asr_decoding, vad_backend,
+            firered_vad_model_path, vad_threshold, min_audio_len, max_audio_len, target_audio_len, silence_threshold,
+            disable_dynamic_vad, disable_dynamic_silence, prefix_retention_len, filter_emoji, filter_repetition,
+            filter_japanese_stream, disable_transcription_context, transcription_initial_prompt, translation_prompt,
+            translation_provider, gpt_model, gemini_model, history_size, translation_timeout, openai_base_url,
+            google_base_url, processing_proxy, use_json_result, retry_if_translation_fails, show_timestamps,
+            show_latency_log, hide_transcription, output_file, output_proxy, cqhttp_url, cqhttp_token, discord_hook,
+            telegram_token, telegram_chat_id, enable_subtitle_sharing, public_host, public_port, extra_cli_args
+        ],
+        outputs=output_box,
+        concurrency_limit=1,
+        scroll_to_output=False)
 
     # Stop Action
     stop_btn.click(stop_translator, outputs=output_box, scroll_to_output=False)

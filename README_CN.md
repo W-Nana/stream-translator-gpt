@@ -288,6 +288,8 @@ stream-translator-gpt {网址} --language {输入语言} --enable_subtitle_shari
 
 也可以配合 [W-Nana/SubtitleOverlay](https://github.com/W-Nana/SubtitleOverlay) 显示共享字幕。先在本项目开启字幕共享，然后在 SubtitleOverlay 中将翻译服务器地址设置为公开字幕服务器地址；同机可填 `http://127.0.0.1:8765`，局域网内其他设备可填 `http://192.168.1.100:8765` 这类实际主机地址。
 
+WebUI 的命令日志会在显示前遮蔽 API Key、机器人 Token、Webhook URL 和带账号密码的代理地址。字幕共享开启后读取端点是公开的；如果绑定到 `0.0.0.0`，局域网内其他设备可以读取当前字幕。
+
 外部客户端可按以下顺序发现并消费实时字幕流：
 
 1. 在 WebUI 服务器，或 CLI 字幕共享端口请求 `GET /api/server/info`，读取 `public_host`、`public_port` 和 `enable_subtitle_sharing`。
@@ -306,6 +308,7 @@ SSE 会发送 `subtitle`、`status`、心跳注释和 `error` 事件。字幕数
 | `--openai_base_url`                     |                                | 自定义 OpenAI 的 API 端点 (影响 GPT 翻译和 OpenAI Whisper 转录)。                                                                                                         |
 | `--google_base_url`                     |                                | 自定义 Google 的 API 端点 (影响 Gemini 翻译)。                                                                                                                            |
 | `--proxy`                               |                                | 用于设置所有未特别指定的 --*_proxy 的值。也会设置 http_proxy 等环境变量。                                                                                                 |
+| `--insecure_api_tls`                    |                                | 禁用 API 客户端和模型下载的 TLS 证书验证。仅应在可信调试代理或受控网络中使用。                                                                                            |
 | **输入选项**                            |                                |                                                                                                                                                                           |
 | `URL`                                   |                                | 直播流的 URL。如果填入本地文件路径，则会将其用作输入。如果填入 "device"，将从您的 PC 设备获取输入。                                                                       |
 | `--format`                              | ba/wa*                         | 码流格式代码，此参数将直接传递给 yt-dlp。您可以通过 `yt-dlp {url} -F` 获取可用格式代码的列表。                                                                            |

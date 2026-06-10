@@ -10,6 +10,7 @@
     "openai_key": "",
     "google_key": "",
     "overall_proxy": "",
+    "insecure_api_tls": false,
     "model_size": "small",
     "qwen3_asr_model": "Qwen/Qwen3-ASR-0.6B",
     "qwen3_asr_dtype": "bfloat16",

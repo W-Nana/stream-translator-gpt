@@ -288,6 +288,8 @@ The subtitle sharing server also serves a built-in live subtitle viewer at `http
 
 You can also display the shared subtitles with [W-Nana/SubtitleOverlay](https://github.com/W-Nana/SubtitleOverlay). Start subtitle sharing here, then set SubtitleOverlay's translation server URL to the public subtitle server, for example `http://127.0.0.1:8765` on the same machine or `http://192.168.1.100:8765` from another device on the LAN.
 
+The WebUI command log redacts API keys, bot tokens, webhook URLs, and proxy credentials before displaying the command. Subtitle sharing read endpoints are public while enabled; if you bind to `0.0.0.0`, other devices on the LAN can read the active subtitles.
+
 External clients can then discover and consume the live subtitle stream with:
 
 1. `GET /api/server/info` on the WebUI server, or on the CLI subtitle sharing port, to read `public_host`, `public_port`, and `enable_subtitle_sharing`.
@@ -306,6 +308,7 @@ The SSE stream emits `subtitle`, `status`, heartbeat comments, and `error` event
 | `--openai_base_url`                     |                                | Customize the API endpoint of OpenAI (Affects GPT translation & OpenAI Transcription).                                                                                                                             |
 | `--google_base_url`                     |                                | Customize the API endpoint of Google (Affects Gemini translation).                                                                                                                                                 |
 | `--proxy`                               |                                | Used to set the proxy for all --*_proxy flags if they are not specifically set. Also sets http_proxy environment variables.                                                                                        |
+| `--insecure_api_tls`                    |                                | Disable TLS certificate verification for API clients and model downloads. Use only with trusted debugging proxies or controlled networks.                                                                           |
 | **Input Options**                       |
 | `URL`                                   |                                | The URL of the stream. If a local file path is filled in, it will be used as input. If fill in "device", the input will be obtained from your PC device.                                                           |
 | `--format`                              | ba/wa*                         | Stream format code, this parameter will be passed directly to yt-dlp. You can get the list of available format codes by `yt-dlp {url} -F`                                                                          |

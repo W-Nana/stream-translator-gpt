@@ -36,8 +36,8 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
          qwen3_asr_bnb_4bit_quant_type, qwen3_asr_bnb_4bit_use_double_quant, use_nemo_asr, nemo_asr_model,
          nemo_asr_device, nemo_asr_decoding, transcription_filters, disable_transcription_context,
          transcription_initial_prompt, gpt_model, gemini_model, translation_prompt, translation_history_size,
-         translation_timeout, use_json_result, retry_if_translation_fails, temperature, top_p, top_k,
-         prompt_cache_key, reasoning_effort, verbosity, service_tier, debug_mode, processing_proxy, output_timestamps,
+         translation_timeout, use_json_result, retry_if_translation_fails, temperature, top_p, top_k, prompt_cache_key,
+         reasoning_effort, verbosity, service_tier, debug_mode, processing_proxy, insecure_api_tls, output_timestamps,
          show_latency_log, hide_transcribe_result, output_file_path, cqhttp_url, cqhttp_token, discord_webhook_url,
          telegram_token, telegram_chat_id, output_proxy, enable_subtitle_sharing, subtitle_share_public_port,
          subtitle_share_host):
@@ -47,7 +47,8 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
     ClientPool.init(openai_api_key=openai_api_key,
                     google_api_key=google_api_key,
                     proxy=processing_proxy,
-                    google_base_url=google_base_url)
+                    google_base_url=google_base_url,
+                    insecure_api_tls=insecure_api_tls)
 
     # Init queues
     getter_to_slicer_queue = queue.SimpleQueue()
@@ -62,8 +63,8 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
     if enable_subtitle_sharing:
         try:
             managed_subtitle_share_server = SubtitleShareServer(host=subtitle_share_host,
-                                                               port=subtitle_share_public_port,
-                                                               enabled=True)
+                                                                port=subtitle_share_public_port,
+                                                                enabled=True)
             managed_subtitle_share_server.start()
         except Exception as e:
             print(f'{ERROR}Failed to start subtitle sharing server on port {subtitle_share_public_port}: {e}')
@@ -128,16 +129,26 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
                                       language=language,
                                       use_faster_whisper=use_faster_whisper,
                                       proxy=processing_proxy,
+                                      insecure_api_tls=insecure_api_tls,
                                       **common_args)
             elif use_faster_whisper:
-                return FasterWhisper(model=model, language=language, proxy=processing_proxy, **common_args)
+                return FasterWhisper(model=model,
+                                     language=language,
+                                     proxy=processing_proxy,
+                                     insecure_api_tls=insecure_api_tls,
+                                     **common_args)
             elif use_openai_transcription_api:
                 return RemoteOpenaiTranscriber(model=openai_transcription_model,
                                                language=language,
                                                proxy=processing_proxy,
+                                               insecure_api_tls=insecure_api_tls,
                                                **common_args)
             elif use_hf_asr:
-                return HFTranscriber(model=model, language=language, proxy=processing_proxy, **common_args)
+                return HFTranscriber(model=model,
+                                     language=language,
+                                     proxy=processing_proxy,
+                                     insecure_api_tls=insecure_api_tls,
+                                     **common_args)
             elif use_qwen3_asr:
                 return Qwen3ASRTranscriber(model=qwen3_asr_model,
                                            language=language,
@@ -148,12 +159,14 @@ def main(url, openai_api_key, google_api_key, openai_base_url, google_base_url, 
                                            quantization=qwen3_asr_quantization,
                                            bnb_4bit_quant_type=qwen3_asr_bnb_4bit_quant_type,
                                            bnb_4bit_use_double_quant=qwen3_asr_bnb_4bit_use_double_quant,
+                                           insecure_api_tls=insecure_api_tls,
                                            **common_args)
             elif use_nemo_asr:
                 return NemoASRTranscriber(model=nemo_asr_model,
                                           proxy=processing_proxy,
                                           device=nemo_asr_device,
                                           decoding=nemo_asr_decoding,
+                                          insecure_api_tls=insecure_api_tls,
                                           **common_args)
             else:
                 return OpenaiWhisper(model=model, language=language, **common_args)
@@ -263,7 +276,9 @@ def _start_subtitle_share_server(host: str, port: int):
     return server
 
 
-def _run_preloaded_task(url: str, args: dict, manager: PreloadedTranscriberManager,
+def _run_preloaded_task(url: str,
+                        args: dict,
+                        manager: PreloadedTranscriberManager,
                         share_server: SubtitleShareServer | None = None) -> int:
     config = build_asr_config(args)
     transcriber = manager.get_for_run(config)
@@ -463,10 +478,11 @@ def cli():
                         choices=['silero', 'firered'],
                         default='silero',
                         help='VAD backend used for audio slicing. FireRedVAD requires the firered_vad extra.')
-    parser.add_argument('--firered_vad_model_path',
-                        type=str,
-                        default=None,
-                        help='Optional OmniVAD FireRedVAD .omnivad model path. If omitted, the bundled OmniVAD model is used.')
+    parser.add_argument(
+        '--firered_vad_model_path',
+        type=str,
+        default=None,
+        help='Optional OmniVAD FireRedVAD .omnivad model path. If omitted, the bundled OmniVAD model is used.')
     parser.add_argument(
         '--model',
         type=str,
@@ -653,12 +669,14 @@ def cli():
         help=
         'Use the specified HTTP/HTTPS/SOCKS proxy for Whisper/GPT API (Gemini currently doesn\'t support specifying a proxy within the program), e.g. http://127.0.0.1:7890.'
     )
+    parser.add_argument(
+        '--insecure_api_tls',
+        action='store_true',
+        help='Disable TLS certificate verification for API/model downloads. Use only with trusted proxies.')
     parser.add_argument('--output_timestamps',
                         action='store_true',
                         help='Output the timestamp of the text when outputting the text.')
-    parser.add_argument('--show_latency_log',
-                        action='store_true',
-                        help='Print ASR and LLM latency in terminal logs.')
+    parser.add_argument('--show_latency_log', action='store_true', help='Print ASR and LLM latency in terminal logs.')
     parser.add_argument('--hide_transcribe_result', action='store_true', help='Hide the result of Whisper transcribe.')
     parser.add_argument('--output_file_path',
                         type=str,

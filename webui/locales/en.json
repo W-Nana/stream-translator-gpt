@@ -12,6 +12,7 @@
     "show_api_keys": "Show API Keys",
     "overall_proxy": "Overall Proxy",
     "overall_proxy_ph": "http://127.0.0.1:7890",
+    "insecure_api_tls": "Disable API TLS verification (trusted proxy only)",
     "input": "Input",
     "input_source": "Input Source",
     "stream_url": "Stream URL",
