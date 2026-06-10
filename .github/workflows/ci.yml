@@ -27,4 +27,5 @@ jobs:
       - name: Run tests
         run: pytest
       - name: Check formatting
-        run: yapf --style '{based_on_style: google, column_limit: 120, allow_multiline_lambdas: True}' --recursive --diff stream_translator_gpt webui tests
+        run: |
+          yapf --style '{based_on_style: google, column_limit: 120, allow_multiline_lambdas: True}' --recursive --diff stream_translator_gpt webui tests
